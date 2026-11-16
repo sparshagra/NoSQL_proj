@@ -1,0 +1,94 @@
+# config.yaml — shared configuration. Owner: Member A.
+# Each section has an owner; edit only your own section (via PR).
+# No passwords in this file: use environment variables.
+
+config_version: 1
+
+# ---------------------------------------------------------------- dataset (A)
+dataset:
+  raw_dir: data/raw            # official .gz files, never modified
+  plain_dir: data/plain        # decompressed once by scripts/prepare_data.py (outside the timer)
+  files:                       # ORDER IS SIGNIFICANT: defines global line numbers (Jul first, then Aug)
+    - name: NASA_access_log_Jul95
+      gz: NASA_access_log_Jul95.gz
+      plain: NASA_access_log_Jul95
+    - name: NASA_access_log_Aug95
+      gz: NASA_access_log_Aug95.gz
+      plain: NASA_access_log_Aug95
+  encoding: latin-1            # B to confirm in the equivalence contract (real logs contain non-UTF-8 bytes)
+
+# ---------------------------------------------------------------- batching (A)
+batching:
+  default_batch_size: 100000   # records per batch (same value for every pipeline in an experiment)
+  line_numbering: global_1_based
+  batch_id_rule: "(line_number - 1) // batch_size + 1"
+  count_malformed_lines: true  # malformed lines keep their line number and count in total_records
+  count_blank_lines: true      # B to confirm
+
+# ---------------------------------------------------------------- run / timing (A)
+run:
+  run_id_format: "{pipeline}_{utc:%Y%m%dT%H%M%S}z_{rand4}"   # lower-cased; safe as a Mongo/Hive identifier
+  timer:
+    start: before pipeline reads input files
+    stop: after load_results() has committed query_results
+  excluded_from_runtime: [download, install, decompression, run_metadata_write, report_rendering]
+
+# ---------------------------------------------------------------- pipeline registry (A)
+# Each module exposes run(input_files, batch_size, run_id) -> dict   (see interfaces.md)
+pipelines:
+  mongo:
+    module: etl.pipelines.mongo_pipeline
+    enabled: false             # flip to true when C's PR is merged
+    owner: C
+  hive:
+    module: etl.pipelines.hive_pipeline
+    enabled: false             # flip to true when D's PR is merged
+    owner: D
+  pig:
+    module: etl.pipelines.pig_pipeline
+    enabled: false
+    owner: TBD                 # statement lists Pig; confirm with instructor whether required
+  mapreduce:
+    module: etl.pipelines.mapreduce_pipeline
+    enabled: false
+    owner: TBD                 # statement lists MapReduce; confirm with instructor whether required
+  stub:
+    module: etl.pipelines.stub_pipeline
+    enabled: true              # fake rows in the correct shape, for loader/report/CLI testing
+    owner: A
+
+# ---------------------------------------------------------------- queries (A, columns fixed by the statement)
+queries:
+  Q1:
+    name: Daily Traffic Summary
+    columns: [log_date, status_code, request_count, total_bytes]
+  Q2:
+    name: Top Requested Resources
+    columns: [resource_path, request_count, total_bytes, distinct_host_count]
+    top_n: 20
+  Q3:
+    name: Hourly Error Analysis
+    columns: [log_date, log_hour, error_request_count, total_request_count, error_rate, distinct_error_hosts]
+
+# ---------------------------------------------------------------- relational DB (B)
+db:
+  engine: postgresql           # or mysql; B decides and tells everyone
+  host: localhost
+  port: 5432
+  database: nosql_logs
+  user_env: PG_USER
+  password_env: PG_PASSWORD
+  schema_file: schema/schema.sql
+
+# ---------------------------------------------------------------- MongoDB (C)
+mongo:
+  uri: mongodb://localhost:27017
+  database: nosql_logs
+  staging_collection_prefix: stg_
+
+# ---------------------------------------------------------------- Hive (D)
+hive:
+  jdbc_url: jdbc:hive2://localhost:10000
+  database: nosql_logs
+  hdfs_stage_dir: /user/nosql/logs
+  table_prefix: stg_

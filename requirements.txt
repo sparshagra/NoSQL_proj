@@ -1,0 +1,12 @@
+# Member A (controller, CLI)
+PyYAML>=6.0
+
+# Member B (RDBMS layer): uncomment the driver for the chosen database
+# psycopg2-binary>=2.9
+# mysql-connector-python>=8.0
+
+# Member C (MongoDB pipeline)
+# pymongo>=4.6
+
+# Member D (Hive pipeline): add the client you use, e.g.
+# pyhive[hive]>=0.7   or call beeline via subprocess (no package needed)

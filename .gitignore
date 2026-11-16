@@ -1,0 +1,14 @@
+# data is never committed: everyone downloads the official files (scripts/prepare_data.py)
+data/
+out/
+*.gz
+
+__pycache__/
+*.pyc
+.venv/
+venv/
+.idea/
+.vscode/
+.env
+*.log
+!tests/sample_1000.log
