@@ -1,0 +1,76 @@
+{
+ "source": "official NASA_access_log_Jul95 / Aug95, decompressed by scripts/prepare_data.py",
+ "global_line_numbers": "Jul95 lines 1..1891715, then Aug95 from 1891716",
+ "sample_1000.log": {
+  "first_line": 1890716,
+  "last_line": 1891715,
+  "batch_size": 300
+ },
+ "edge_cases.log": {
+  "lines": {
+   "1": "ordinary request",
+   "7": "bytes written as 0",
+   "51": "bytes '-' with status 404",
+   "811": "query string in path",
+   "1286": "no protocol",
+   "3046": "POST",
+   "6035": "protocol HTTP/V1.0",
+   "9001": "extra spaces before protocol",
+   "22545": "space inside path",
+   "67354": "status 403",
+   "131906": "embedded quote in request",
+   "154623": "status 500 with bytes 0",
+   "349763": "status 501, POST",
+   "691503": "binary request (control bytes), status 400",
+   "727224": "'GET  HTTP/1.0': no path",
+   "775596": "header text after protocol ('HTTP/1.0From: <...>')",
+   "947166": "very long HEAD request with HTML text",
+   "1348605": "protocol HTTP/*",
+   "1421675": "single-token request, status 400",
+   "1892782": "Aug: status 403",
+   "1895266": "Aug: HEAD, bytes 0",
+   "1925712": "Aug: first line after the 1-3 Aug outage",
+   "2204436": "Aug: status 500",
+   "2894958": "Aug: double embedded quote"
+  },
+  "batch_size": 7
+ },
+ "nonutf8_cases.log": {
+  "lines": [
+   118929,
+   119007,
+   551066,
+   1031609,
+   1353252,
+   1454420,
+   1499020,
+   1649964,
+   2504861,
+   2504876,
+   2504904,
+   2505341,
+   2721651,
+   3329348,
+   3408996,
+   3409015,
+   3422350,
+   3430991
+  ],
+  "batch_size": 5
+ },
+ "boundary": {
+  "files": [
+   "boundary_jul95_tail.log",
+   "boundary_aug95_head.log"
+  ],
+  "lines_each_side": 5,
+  "batch_size": 3
+ },
+ "sha256": {
+  "fixtures/boundary_aug95_head.log": "598a8c5a76c34b666c4ac996d177285b39fcbe906c61b07b6b0df6b1263a8873",
+  "fixtures/boundary_jul95_tail.log": "885de0e4e85e7c21b410bafbe67c05a92c3a5907a8294796673e1004da39911f",
+  "fixtures/edge_cases.log": "d0b7fd1583b75de140ed29c55b2cb4c7803e764900cace7e530cd580d8a8fc65",
+  "fixtures/nonutf8_cases.log": "51537a30718ae64ffb8a644700504a6949373104df218c707d763ae3b5511c6d",
+  "sample_1000.log": "ad9821569ef10a3cd8e575a4eb1f57bdeed5b5d81ed4ddbaf0293f8b392bdd48"
+ }
+}

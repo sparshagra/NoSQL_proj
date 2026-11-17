@@ -1,0 +1,3 @@
+# Member B: these .log files are tiny byte-exact copies of real NASA lines (see manifest.json).
+# The root .gitignore ignores *.log; re-include the fixtures here.
+!*.log
