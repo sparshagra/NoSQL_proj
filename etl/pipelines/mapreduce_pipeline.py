@@ -51,7 +51,10 @@ class Job:
     reduces: int = 0
     cache_splits: bool = False        # ship splits.tsv through the distributed cache
     env: dict = field(default_factory=dict)
-
+    def __post_init__(self):
+        # YARN links every -files entry from its own cache dir; Python follows the link, so the
+        # task directory has to be put on the import path explicitly.
+        self.env = {"PYTHONPATH": ".", **self.env}
 
 # ====================================================================== the real cluster
 class HadoopBackend:
