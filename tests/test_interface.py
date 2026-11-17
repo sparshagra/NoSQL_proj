@@ -1,11 +1,13 @@
-"""Generic pipeline interface test. Applies to EVERY enabled real pipeline (mongo, hive, ...).
+"""Generic pipeline interface test. Applies to EVERY enabled real pipeline
+(Phase 1: mapreduce, pig; Phase 2: mongo, hive). A pipeline that is enabled in config.yaml but whose
+module has not been merged yet is skipped, not failed.
 
 Skipped until B commits tests/sample_1000.log and tests/sample_1000.expected.json.
 expected.json = {"total_records": .., "malformed_count": .., "rows": [...]}  (Q1-Q3 rows in
 interfaces.md format; pipeline/run_id/batch_id/executed_at are ignored in the comparison).
 
 Run:  python -m unittest tests.test_interface -v
-Needs the pipeline's engine (Mongo / Hive) to be running, so it is NOT part of the default
+Needs the pipeline's engine (Hadoop container / Mongo / Hive) to be running, so it is NOT part of the default
 quick test run in CI; set ETL_ENGINE_TESTS=1 to include it.
 """
 
@@ -16,6 +18,7 @@ from pathlib import Path
 
 from etl.config import load_config
 from etl.contract import check_output, compare_outputs
+from etl.errors import PipelineError
 from etl.pipelines import enabled_names, load_pipeline
 from etl.runid import new_run_id
 
@@ -35,8 +38,12 @@ class PipelineMatchesReference(unittest.TestCase):
         self.assertTrue(names, "no real pipeline enabled in config.yaml")
         for name in names:
             with self.subTest(pipeline=name):
+                try:
+                    module = load_pipeline(cfg, name)
+                except PipelineError as exc:       # enabled in config but module not merged yet
+                    self.skipTest(str(exc))
                 run_id = new_run_id(name)
-                out = load_pipeline(cfg, name).run([str(SAMPLE)], BATCH_SIZE, run_id)
+                out = module.run([str(SAMPLE)], BATCH_SIZE, run_id)
                 check_output(out, BATCH_SIZE, pipeline=name, run_id=run_id)
                 self.assertEqual(out["total_records"], 1000)
                 self.assertEqual(out["batch_count"], 4)

@@ -2,7 +2,7 @@
 <!-- one or two sentences -->
 
 ## Owner / area
-- [ ] A (controller/CLI/config)  - [ ] B (contract/schema/loader/report)  - [ ] C (mongo)  - [ ] D (hive)
+- [ ] A (controller/CLI/config; Phase 2: mongo)  - [ ] B (contract/schema/loader/report; Phase 2: hive)  - [ ] C (mapreduce)  - [ ] D (pig, hadoop environment)
 
 ## Checklist for pipeline PRs (Member A reviews every one)
 - [ ] Only public function is `run(input_files, batch_size, run_id)`; module registered in `config.yaml` (`enabled: true`)
@@ -12,7 +12,9 @@
 - [ ] Output equals B's `tests/sample_1000.expected.json` (`ETL_ENGINE_TESTS=1 python -m unittest tests.test_interface -v`)
 - [ ] Re-running the same `run_id` is safe (staging dropped/recreated); no writes to PostgreSQL/MySQL
 - [ ] Failures raise `etl.errors.PipelineError`; no partial rows returned
-- [ ] Core processing really runs in the engine (aggregation pipeline / HiveQL), not in pandas/Python
+- [ ] Core processing really runs in the engine (MapReduce job / Pig script / aggregation pipeline / HiveQL), not in pandas/Python
+- [ ] `total_records` equals `python -m etl files`; the `\r` rule is respected (record delimiter set, or zero lone `\r` shown by `scripts/check_line_endings.py`)
+- [ ] Hadoop engines: numbering verified with a many-splits run (tiny split size); input copy (`hdfs dfs -put`) is inside `run()` so it counts in the runtime
 
 ## Checklist for every PR
 - [ ] `python -m unittest discover -s tests` passes

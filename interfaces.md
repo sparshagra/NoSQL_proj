@@ -1,14 +1,23 @@
 # interfaces.md — Pipeline / Loader / Controller contract
 
-Owner: **Member A**. Status: **v1, implemented and tested (Mon 16 Nov 2026)**. Changes only by PR reviewed by A.
+Owner: **Member A**. Status: **v2 (Tue 17 Nov 2026): Phase 1 = MapReduce + Pig, Phase 2 = MongoDB + Hive.** Changes only by PR reviewed by A.
 Companion file: `config.yaml` (all constants live there, never hard-coded in pipelines).
 
 Rule of the project: *anything that defines what the output looks like is frozen first; anything that defines how it is computed comes after.*
 This file freezes the **shape** of everything that crosses a member boundary. It says nothing about regexes, tie-breaks or rounding. Those belong to B's equivalence contract.
 
+| Pipeline | Phase | Owner | Branch prefix |
+|---|---|---|---|
+| `mapreduce` | 1 | C | `c/mr-...` |
+| `pig` | 1 | D | `d/pig-...` |
+| `mongo` | 2 | A | `a/mongo-...` |
+| `hive` | 2 | B | `b/hive-...` |
+
+The problem statement requires **all four** pipelines in the final submission. Nothing in this file depends on which engine is built first.
+
 ---
 
-## 1. Pipeline module interface (C and D implement, A calls)
+## 1. Pipeline module interface (pipeline owners implement, A calls)
 
 Every pipeline is one Python module under `etl/pipelines/` exposing exactly one public function:
 
@@ -21,7 +30,7 @@ def run(input_files: list[str], batch_size: int, run_id: str) -> dict:
 |---|---|
 | `input_files` | Ordered list of plain-text (already decompressed) log file paths. **Order is significant** (see §2). Never re-sort. |
 | `batch_size` | Number of input log records per batch. Integer >= 1. Same value for every pipeline in an experiment. |
-| `run_id` | Unique id created by A's controller. Use it to name or tag staging collections/tables. Safe identifier: `[a-z0-9_]`, max 48 chars. |
+| `run_id` | Unique id created by A's controller. Use it to name or tag staging collections/tables/HDFS directories. Safe identifier: `[a-z0-9_]`, max 48 chars. |
 
 ### Return value
 
@@ -31,7 +40,7 @@ def run(input_files: list[str], batch_size: int, run_id: str) -> dict:
   "total_records":   int,   # every physical line of every input file, malformed included
   "batch_count":     int,   # number of non-empty batches = ceil(total_records / batch_size)
   "rows": [ {...}, ... ],   # result rows for Q1, Q2, Q3, see below
-  "stage_timings":   {...}  # OPTIONAL, e.g. {"parse_sec": 12.3, "query_sec": 4.1}. Ignored by the loader. Useful for the report.
+  "stage_timings":   {...}  # OPTIONAL, e.g. {"copy_sec": 4.0, "parse_sec": 12.3, "query_sec": 4.1}. Ignored by the loader. Useful for the report.
 }
 ```
 
@@ -73,12 +82,12 @@ If the instructor wants per-batch result sets instead, only the pipelines' query
 
 ### Pipeline obligations
 
-1. **Real engine only.** The ETL and the aggregation must run in the selected technology (Mongo aggregation / HiveQL / Pig scripts / MapReduce job). Python may only orchestrate and read back the final rows.
+1. **Real engine only.** The ETL and the aggregation must run in the selected technology (MapReduce job / Pig scripts / Mongo aggregation / HiveQL). Python may only orchestrate and read back the final rows.
 2. **No silent drops.** A line that fails to parse is counted in `malformed_count` and in `total_records`, and still occupies its line number in the batch rule.
-3. **Idempotent.** Staging for `run_id` is dropped and recreated at the start of `run()`. Re-running the same `run_id` must not duplicate data.
+3. **Idempotent.** Staging for `run_id` (collections, tables, HDFS directories) is dropped and recreated at the start of `run()`. Re-running the same `run_id` must not duplicate data.
 4. **No DB writes to the relational store.** Pipelines return rows. Only B's loader writes to PostgreSQL/MySQL.
 5. **Fail loudly.** On any failure raise `etl.errors.PipelineError(message)`. Never return partial rows.
-6. **Self-contained setup.** Connecting to Mongo/Hive and creating staging objects happens inside `run()` (this time is inside the runtime). Installing software and starting servers does not.
+6. **Self-contained setup, and what counts as runtime.** Connecting to the engine, **copying the input into it (`hdfs dfs -put`, Mongo ingest)** and creating staging objects happen inside `run()`, so that time is inside the runtime. Installing software and starting servers/containers does not count.
 
 ---
 
@@ -97,15 +106,35 @@ avg_batch_size = total_records / batch_count     (all batches are non-empty by c
                                                   the last one may be short and still counts)
 ```
 
-How each engine obtains `line_number`:
+### The shared line-terminator (`\r`) rule — all engines
+
+A physical line ends at **`\n` only**. A lone `\r` is data, never a terminator. A `\r` directly before `\n` belongs to the line text (the parser strips it, B's contract says how); the line still counts once.
+
+Hadoop's default line reader also splits at a lone `\r`, which would change `total_records` and shift every later line number. Therefore every Hadoop-based pipeline (MapReduce, Pig, Hive) must do **one** of:
+- set `textinputformat.record.delimiter` to `\n` for every job/script that reads the input (Pig: `SET textinputformat.record.delimiter '\n';`, MapReduce: `-D textinputformat.record.delimiter=...` or in the driver, Hive: `SET textinputformat.record.delimiter='\n';`), or
+- show with `python scripts/check_line_endings.py` that the real files contain **zero** lone `\r`, and say so in the report.
+
+Acceptance test for every pipeline: its `total_records` equals `python -m etl files` on the same files.
+
+### How each engine obtains `line_number`
 
 | Engine | How |
 |---|---|
-| MongoDB (C) | Use `etl.batching.iter_batches(files, batch_size)` (yields `(batch_id, [(line_number, line), ...])`) or `iter_numbered_lines` + `batch_id_for_line`. Already committed and tested; do not re-implement. |
-| Hive (D) | The external table has no line number. Derive it with `ROW_NUMBER() OVER (ORDER BY file_rank, BLOCK__OFFSET__INSIDE__FILE)` where `file_rank` comes from the position of `INPUT__FILE__NAME` in `input_files`. Then `batch_id = CAST((rn - 1) / ${batch_size} AS INT) + 1`. **Read decompressed files**; offsets inside `.gz` are not reliable. Hadoop's line reader also splits at a lone `\r`; compare `COUNT(*)` of the raw table with `python -m etl files`. D must test this on Monday/Tuesday, it is the most likely place to break equivalence. Full recipe in `docs/handoff_to_D.md`. |
-| Pig / MapReduce | Same rule, to be specified when those pipelines are assigned. |
+| **MapReduce (C)** | **Two-pass numbering.** The default `TextInputFormat` key is a byte offset, not a line number.<br>**Pass 1** (counting job, map-only): each mapper counts the lines in *its input split* and emits `file_rank \t split_start_offset \t line_count`. Inside `run()`, sort by `(file_rank, split_start_offset)` and compute `first_line[split] = 1 + sum(line_count of all earlier splits)`; write it as `splits.tsv`. `total_records` = sum of all counts.<br>**Pass 2** (parse + stage job): ship `splits.tsv` through the distributed cache. Each mapper looks up its split (file name, start offset), numbers its lines `first_line, first_line+1, ...`, then `batch_id = (line_no - 1) // batch_size + 1`. Streaming mappers read the split from the env vars `mapreduce_map_input_file` / `mapreduce_map_input_start` (verify the names in your Hadoop version); a Java mapper uses `((FileSplit) context.getInputSplit())`.<br>**Passes 1 and 2 must see identical splits:** same input files, same `hadoop.split_size_bytes` (`mapreduce.input.fileinputformat.split.maxsize` and `.minsize`), same input format, same `\r` rule. Recipe and job list in `docs/handoff_to_C.md`. |
+| **Pig (D)** | **Per-file `RANK` plus an offset.** Load each input file as its own relation (`TextLoader`), `RANK` it without `BY` (a sequential number in input order), and add the total line count of the earlier file as a scalar: `line_no = rank + jul_cnt.n` for Aug95. Then `batch_id = (line_no - 1) / $batch_size + 1` using `long` division. Set `SET pig.splitCombination false;` so the input order is preserved.<br>**Verify before building on it:** on a file run with a tiny split size (many mappers), line `n` from Pig must equal line `n` from `python -m etl`'s numbering (`etl.batching.iter_numbered_lines`). If `RANK` order is not reliable in your Pig version, tell A the same day. Recipe in `docs/handoff_to_D.md`. |
+| MongoDB (A, Phase 2) | Use `etl.batching.iter_batches(files, batch_size)` (yields `(batch_id, [(line_number, line), ...])`) or `iter_numbered_lines` + `batch_id_for_line`. Already committed and tested; do not re-implement. |
+| Hive (B, Phase 2) | The external table has no line number. Derive it with `ROW_NUMBER() OVER (ORDER BY file_rank, BLOCK__OFFSET__INSIDE__FILE)` where `file_rank` comes from the HDFS file name prefix (§2b). **Read decompressed files**; offsets inside `.gz` are not reliable. Apply the `\r` rule above. Full recipe in `docs/handoff_hive_phase2.md`. |
 
 The controller cross-checks every run: `batch_count == ceil(total_records / batch_size)` and every `batch_id` in rows is in `1..batch_count`. A failed check aborts the run before loading.
+
+### 2b. Shared Hadoop conventions (MapReduce, Pig, Hive)
+
+All three use the same Hadoop container, configured in `config.yaml → hadoop` (owner D):
+- **Input in HDFS:** `run()` copies the plain files to `hadoop.hdfs_input_dir` with `hdfs dfs -put`. **This copy is inside the runtime.** HDFS names are `{rank:02d}_{name}` (e.g. `00_NASA_access_log_Jul95`, `01_NASA_access_log_Aug95`) so alphabetical order equals `input_files` order.
+- **Per-run work area:** `<hadoop.hdfs_work_dir>/<run_id>/`, deleted at the start of `run()` (idempotent).
+- **Same split size everywhere:** `hadoop.split_size_bytes` in every job.
+- **Helper module:** D writes `etl/hadoop_util.py` (run a command in the container, put inputs with rank-prefixed names, clean a run directory, cat a result file). C and D share it; D delivers a first version on Tuesday evening, C may start with plain `subprocess` calls and switch over.
+- **Hadoop is reached through `docker exec <hadoop.container_name> ...`** from Python. The host's `data/plain` is bind-mounted read-only at `hadoop.host_data_mount` when the container is started (setup, outside the timer).
 
 ---
 
@@ -137,7 +166,7 @@ The statement defines runtime as: *from the moment the tool starts reading the i
 ```python
 run_id = new_run_id(pipeline)                       # etl.runid
 t0 = time.perf_counter()                            # <-- start: just before the pipeline reads input
-out = pipeline.run(files, batch_size, run_id)
+out = pipeline.run(files, batch_size, run_id)       #     includes the HDFS copy / Mongo ingest
 check_output(out, batch_size)                       # etl.contract (cheap, in-memory)
 load_results(out["rows"])                           # committed before the timer stops
 runtime_sec = time.perf_counter() - t0              # <-- stop: results are in the RDBMS
@@ -151,9 +180,10 @@ load_run_metadata({
 report(run_id)                                      # NOT part of runtime
 ```
 
-Excluded from runtime: dataset download, software install/server start-up, decompression (done once by `scripts/prepare_data.py`), writing `run_metadata`, rendering the report.
+Excluded from runtime: dataset download, software install and container/server start-up, decompression (done once by `scripts/prepare_data.py`), writing `run_metadata`, rendering the report.
+**Included:** copying the input into the engine (HDFS put, Mongo ingest), job/script startup, staging, queries, loading `query_results`.
 
-`run_id` format: `{pipeline}_{UTC yyyymmddThhmmss}z_{4 hex}`, lower-case, e.g. `mongo_20261118t140501z_a3f9`.
+`run_id` format: `{pipeline}_{UTC yyyymmddThhmmss}z_{4 hex}`, lower-case, e.g. `mapreduce_20261118t140501z_a3f9`.
 
 ---
 
@@ -162,17 +192,26 @@ Excluded from runtime: dataset download, software install/server start-up, decom
 ```
 python -m etl list-pipelines
 python -m etl files   [--batch-size N] [--files F ...]     # line counts + expected batch_count (cross-check your total_records)
-python -m etl run     --pipeline {mongo|hive|pig|mapreduce|stub} [--batch-size N] [--files F ...]
+python -m etl run     --pipeline {mapreduce|pig|mongo|hive|stub} [--batch-size N] [--files F ...]
                       [--report] [--dry-run] [--dump-rows out.json] [--dummy-db]
 python -m etl report  [--run-id ID | --latest] [--dummy-db]
 python -m etl compare a.json b.json                        # equivalence check of two --dump-rows files
 ```
 
+Examples:
+
+```
+python -m etl run --pipeline mapreduce --dry-run --files tests/sample_1000.log --batch-size 300 --dump-rows out/mr.json
+python -m etl run --pipeline pig       --dry-run --files tests/sample_1000.log --batch-size 300 --dump-rows out/pig.json
+python -m etl compare out/mr.json out/pig.json
+python -m etl run --pipeline pig --batch-size 100000 --report
+```
+
 - `--batch-size` defaults to `batching.default_batch_size` in `config.yaml`.
 - `--files` overrides the input (use it for `tests/sample_1000.log` or a synthetic file).
-- `--dry-run` runs the pipeline and the contract check and writes nothing to any database. **This is what C and D use while developing.**
-- `--dump-rows` saves the full pipeline output. Run Mongo and Hive with the same `--files` and `--batch-size`, then `compare` the two dumps.
-- Pipelines are registered in `config.yaml → pipelines` and imported lazily, so a missing Hive install never breaks the Mongo run. A pipeline is selectable only when `enabled: true` (set it in your own branch while developing).
+- `--dry-run` runs the pipeline and the contract check and writes nothing to any database. **This is what pipeline owners use while developing.**
+- `--dump-rows` saves the full pipeline output. Run two pipelines with the same `--files` and `--batch-size`, then `compare` the two dumps.
+- Pipelines are registered in `config.yaml → pipelines` and imported lazily, so a missing Hadoop or Mongo install never breaks another pipeline. A pipeline is selectable only when `enabled: true`. `mapreduce` and `pig` are already enabled; their modules arrive with C's and D's PRs (until then you get a clear "cannot import pipeline" error). `mongo` and `hive` are enabled by A and B when their PRs merge.
 - Loader/report selection: the controller uses `etl/rdbms/loader.py` and `report.py` (B). Only if those files do not exist does it fall back, with a loud warning, to `etl/rdbms/dummy.py` (JSON file, no database). If B's files exist but fail to import, the error is shown, never swallowed. `--dummy-db` or `ETL_DUMMY_DB=1` forces the dummy.
 
 ## 5b. Tools A provides (already in the repo, tested)
@@ -185,7 +224,8 @@ python -m etl compare a.json b.json                        # equivalence check o
 | `etl.errors` | `PipelineError`, `ContractError`, `ConfigError` |
 | `etl.pipelines.stub_pipeline` | fake rows in the correct format, for B's loader/report tests |
 | `etl.rdbms.dummy` | JSON-file stand-in with the same three function signatures B implements |
-| `scripts/prepare_data.py` | decompress the official `.gz` once, write `manifest.json` (lines, bytes, sha256); `--verify` to check yours matches the team's |
+| `scripts/prepare_data.py` | decompress the official `.gz` once, write `manifest.json` (lines, bytes, sha256, CRLF and lone-`\r` counts); `--verify` to check yours matches the team's |
+| `scripts/check_line_endings.py` | count `\r\n` and lone `\r` in any file (the shared `\r` rule) |
 | `scripts/make_synthetic_log.py` | small fake log (with odd lines) for development before the real files |
 
 The contract checker also enforces two invariants (set `check_totals=False` / `strict_batch_id=False` only after a team decision):
@@ -200,30 +240,32 @@ config.yaml
 interfaces.md
 docs/                      contract.md (B), architecture.md + diagram (A), handoff notes
 schema/schema.sql          (B)
-scripts/prepare_data.py    decompress .gz once, outside the timer
+scripts/                   prepare_data.py (decompress once, outside the timer), check_line_endings.py, make_synthetic_log.py
 data/raw/  data/plain/     git-ignored
 etl/
   __main__.py  cli.py      (A)
   controller.py            (A)  run_id, timer, checks, calls loader/report
   config.py batching.py runid.py contract.py errors.py     (A)
+  hadoop_util.py           (D)  docker exec / HDFS helpers shared by MapReduce, Pig, Hive
   pipelines/
     __init__.py            (A)  registry
     stub_pipeline.py       (A)  fake rows in §1 format
-    mongo_pipeline.py      (C)
-    hive_pipeline.py       (D)  + hive/*.hql
+    mapreduce_pipeline.py  (C)  + mapreduce/*  (mapper/reducer scripts or jar sources)
+    pig_pipeline.py        (D)  + pig/*.pig
+    mongo_pipeline.py      (A, Phase 2)
+    hive_pipeline.py       (B, Phase 2)  + hive/*.hql
   rdbms/
     loader.py  report.py   (B)  (A's dummy.py is used only while these do not exist)
     dummy.py               (A)
 tests/
-  test_batching.py test_contract.py test_controller.py   (A, always run)
+  test_batching.py test_contract.py test_controller.py test_scripts.py   (A, always run)
   test_interface.py        (A)  every enabled real pipeline vs B's reference; ETL_ENGINE_TESTS=1
   sample_1000.log          (B)  1000 real lines
   sample_1000.expected.json (B) expected output of the contract on that sample
 ```
-```
 
 ## 7. Git workflow
 
-- `main` is protected. One branch per member: `a/…`, `b/…`, `c/mongo-…`, `d/hive-…`.
+- `main` is protected. One branch per member: `a/…`, `b/…`, `c/mr-…` (MapReduce), `d/pig-…` (Pig). Phase 2: `a/mongo-…`, `b/hive-…`.
 - Merge via pull request only. A reviews anything touching `etl/pipelines/__init__.py`, `config.yaml`, `interfaces.md` and every pipeline PR (checklist: signature, return keys, `batch_id` rule, malformed counted, idempotent, no RDBMS writes).
-- Edit only your own section of `config.yaml` (`mongo:` is C's, `hive:` is D's, `db:` is B's, everything else A's).
+- Edit only your own section of `config.yaml`: `mapreduce:` is C's, `pig:` and `hadoop:` are D's, `db:` is B's, `mongo:` is A's (Phase 2), `hive:` is B's (Phase 2), everything else A's.

@@ -1,8 +1,11 @@
 # config.yaml — shared configuration. Owner: Member A.
 # Each section has an owner; edit only your own section (via PR).
 # No passwords in this file: use environment variables.
+#
+# Phase 1 (Thu 19 Nov): MapReduce (C) + Pig (D).   Phase 2: MongoDB (A) + Hive (B).
+# The statement requires all four pipelines in the final submission.
 
-config_version: 1
+config_version: 2
 
 # ---------------------------------------------------------------- dataset (A)
 dataset:
@@ -24,34 +27,41 @@ batching:
   batch_id_rule: "(line_number - 1) // batch_size + 1"
   count_malformed_lines: true  # malformed lines keep their line number and count in total_records
   count_blank_lines: true      # B to confirm
+  line_terminator: "\\n"       # a line ends at \n ONLY. A lone \r is data, never a terminator (see interfaces.md section 2)
 
 # ---------------------------------------------------------------- run / timing (A)
 run:
-  run_id_format: "{pipeline}_{utc:%Y%m%dT%H%M%S}z_{rand4}"   # lower-cased; safe as a Mongo/Hive identifier
+  run_id_format: "{pipeline}_{utc:%Y%m%dT%H%M%S}z_{rand4}"   # lower-cased; safe as a Mongo/Hive/HDFS identifier
   timer:
-    start: before pipeline reads input files
+    start: before the pipeline starts reading input files
     stop: after load_results() has committed query_results
-  excluded_from_runtime: [download, install, decompression, run_metadata_write, report_rendering]
+    note: >
+      Copying the input into the engine (hdfs dfs -put for MapReduce/Pig/Hive, ingest for MongoDB)
+      is part of reading the input, so it is INSIDE the runtime. It happens inside run().
+      Starting containers/servers and installing software are not.
+  excluded_from_runtime: [download, install, container_start, decompression, run_metadata_write, report_rendering]
 
 # ---------------------------------------------------------------- pipeline registry (A)
 # Each module exposes run(input_files, batch_size, run_id) -> dict   (see interfaces.md)
+# Phase 1 pipelines are enabled: their modules land with C's and D's PRs. Until then, selecting
+# one gives a clear "cannot import pipeline" error. Phase 2 pipelines stay disabled until merged.
 pipelines:
-  mongo:
-    module: etl.pipelines.mongo_pipeline
-    enabled: false             # flip to true when C's PR is merged
-    owner: C
-  hive:
-    module: etl.pipelines.hive_pipeline
-    enabled: false             # flip to true when D's PR is merged
-    owner: D
-  pig:
-    module: etl.pipelines.pig_pipeline
-    enabled: false
-    owner: TBD                 # statement lists Pig; confirm with instructor whether required
   mapreduce:
     module: etl.pipelines.mapreduce_pipeline
-    enabled: false
-    owner: TBD                 # statement lists MapReduce; confirm with instructor whether required
+    enabled: true              # Phase 1
+    owner: C
+  pig:
+    module: etl.pipelines.pig_pipeline
+    enabled: true              # Phase 1
+    owner: D
+  mongo:
+    module: etl.pipelines.mongo_pipeline
+    enabled: false             # Phase 2 (A). Also A's safety net: built early, see docs/member_A_plan.md
+    owner: A
+  hive:
+    module: etl.pipelines.hive_pipeline
+    enabled: false             # Phase 2 (B)
+    owner: B
   stub:
     module: etl.pipelines.stub_pipeline
     enabled: true              # fake rows in the correct shape, for loader/report/CLI testing
@@ -80,15 +90,39 @@ db:
   password_env: PG_PASSWORD
   schema_file: schema/schema.sql
 
-# ---------------------------------------------------------------- MongoDB (C)
+# ---------------------------------------------------------------- Hadoop environment (D; shared by mapreduce, pig, hive)
+hadoop:
+  container_name: nosql-hadoop          # docker container that runs HDFS + YARN (D confirms)
+  docker_cmd: docker
+  host_data_mount: /data/plain          # where data/plain is bind-mounted INSIDE the container (read-only)
+  hdfs_input_dir: /user/nosql/input     # run() copies the inputs here; counted in the runtime
+  hdfs_work_dir: /user/nosql/work       # per-run outputs under <work_dir>/<run_id>/ (deleted at start of run)
+  split_size_bytes: 67108864            # 64 MB. Same value in EVERY job so splits are identical (MapReduce two-pass numbering)
+  input_name_format: "{rank:02d}_{name}"  # HDFS file names carry the file rank so name order == input_files order
+
+# ---------------------------------------------------------------- MapReduce (C)
+mapreduce:
+  mode: streaming                       # streaming (Python mapper/reducer inside the container) or java
+  streaming_jar: /opt/hadoop/share/hadoop/tools/lib/hadoop-streaming-*.jar   # C confirms the path in the image
+  num_reducers: 4
+  scripts_dir: etl/pipelines/mapreduce  # mapper/reducer scripts
+
+# ---------------------------------------------------------------- Pig (D)
+pig:
+  exec_type: mapreduce                  # mapreduce = real cluster mode. local = FALLBACK ONLY, must be stated in the report
+  pig_bin: pig
+  scripts_dir: etl/pipelines/pig        # .pig scripts
+  split_combination: false              # SET pig.splitCombination false (keeps input order for RANK numbering)
+
+# ---------------------------------------------------------------- MongoDB (A, Phase 2)
 mongo:
   uri: mongodb://localhost:27017
   database: nosql_logs
   staging_collection_prefix: stg_
 
-# ---------------------------------------------------------------- Hive (D)
+# ---------------------------------------------------------------- Hive (B, Phase 2)
 hive:
   jdbc_url: jdbc:hive2://localhost:10000
   database: nosql_logs
-  hdfs_stage_dir: /user/nosql/logs
+  hdfs_stage_dir: /user/nosql/hive_stage
   table_prefix: stg_

@@ -25,6 +25,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from etl.batching import count_lines  # noqa: E402
 from etl.config import abs_path, load_config  # noqa: E402
+from scripts.check_line_endings import scan  # noqa: E402
 
 BASE_URL = "https://ita.ee.lbl.gov/traces/"
 
@@ -38,7 +39,9 @@ def sha256_of(path: Path) -> str:
 
 
 def describe(path: Path) -> dict:
-    return {"bytes": path.stat().st_size, "lines": count_lines([str(path)]), "sha256": sha256_of(path)}
+    endings = scan(str(path))   # CRLF / lone-CR counts: the shared \r rule in interfaces.md
+    return {"bytes": path.stat().st_size, "lines": count_lines([str(path)]), "sha256": sha256_of(path),
+            "crlf_lines": endings["crlf"], "lone_cr": endings["lone_cr"]}
 
 
 def main() -> int:
@@ -82,9 +85,13 @@ def main() -> int:
                 shutil.copyfileobj(src, dst, 1 << 20)
         manifest["files"][f["plain"]] = describe(plain_path)
         d = manifest["files"][f["plain"]]
-        print(f"  {f['plain']}: {d['lines']} lines, {d['bytes']} bytes, sha256 {d['sha256'][:16]}...")
+        print(f"  {f['plain']}: {d['lines']} lines, {d['bytes']} bytes, sha256 {d['sha256'][:16]}..., "
+              f"CRLF lines {d['crlf_lines']}, lone CR {d['lone_cr']}")
 
     manifest["total_lines"] = sum(d["lines"] for d in manifest["files"].values())
+    if any(d["lone_cr"] for d in manifest["files"].values()):
+        print("WARNING: lone \\r found. Every Hadoop job must set textinputformat.record.delimiter "
+              "to \\n (interfaces.md section 2).")
     manifest_path.write_text(json.dumps(manifest, indent=1))
     print(f"total_records (physical lines): {manifest['total_lines']}\nmanifest: {manifest_path}")
     return 0
