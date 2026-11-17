@@ -1,0 +1,7 @@
+# Member B: the sample and fixtures are byte-exact copies of the official NASA logs.
+# Never convert their line endings (core.autocrlf would turn \n into \r\n on Windows
+# checkouts, and Hadoop would then see a \r at the end of every line).
+sample_1000.log -text
+sample_1000.records.jsonl -text
+sample_1000.expected.json -text
+fixtures/** -text

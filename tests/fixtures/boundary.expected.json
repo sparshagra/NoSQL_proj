@@ -1,0 +1,159 @@
+{
+ "batch_size": 3,
+ "files": [
+  "boundary_jul95_tail.log",
+  "boundary_aug95_head.log"
+ ],
+ "malformed_count": 1,
+ "total_records": 10,
+ "batch_count": 4,
+ "rows": [
+  {
+   "query_id": "Q1",
+   "pipeline": "reference",
+   "run_id": "reference",
+   "batch_id": 4,
+   "executed_at": "1970-01-01T00:00:00Z",
+   "log_date": "1995-07-28",
+   "status_code": 200,
+   "request_count": 4,
+   "total_bytes": 21241
+  },
+  {
+   "query_id": "Q1",
+   "pipeline": "reference",
+   "run_id": "reference",
+   "batch_id": 4,
+   "executed_at": "1970-01-01T00:00:00Z",
+   "log_date": "1995-08-01",
+   "status_code": 200,
+   "request_count": 1,
+   "total_bytes": 1839
+  },
+  {
+   "query_id": "Q1",
+   "pipeline": "reference",
+   "run_id": "reference",
+   "batch_id": 4,
+   "executed_at": "1970-01-01T00:00:00Z",
+   "log_date": "1995-08-01",
+   "status_code": 304,
+   "request_count": 4,
+   "total_bytes": 0
+  },
+  {
+   "query_id": "Q2",
+   "pipeline": "reference",
+   "run_id": "reference",
+   "batch_id": 4,
+   "executed_at": "1970-01-01T00:00:00Z",
+   "resource_path": "/images/ksclogo-medium.gif",
+   "request_count": 2,
+   "total_bytes": 5866,
+   "distinct_host_count": 2
+  },
+  {
+   "query_id": "Q2",
+   "pipeline": "reference",
+   "run_id": "reference",
+   "batch_id": 4,
+   "executed_at": "1970-01-01T00:00:00Z",
+   "resource_path": "/",
+   "request_count": 1,
+   "total_bytes": 0,
+   "distinct_host_count": 1
+  },
+  {
+   "query_id": "Q2",
+   "pipeline": "reference",
+   "run_id": "reference",
+   "batch_id": 4,
+   "executed_at": "1970-01-01T00:00:00Z",
+   "resource_path": "/images/KSC-logosmall.gif",
+   "request_count": 1,
+   "total_bytes": 1204,
+   "distinct_host_count": 1
+  },
+  {
+   "query_id": "Q2",
+   "pipeline": "reference",
+   "run_id": "reference",
+   "batch_id": 4,
+   "executed_at": "1970-01-01T00:00:00Z",
+   "resource_path": "/images/MOSAIC-logosmall.gif",
+   "request_count": 1,
+   "total_bytes": 0,
+   "distinct_host_count": 1
+  },
+  {
+   "query_id": "Q2",
+   "pipeline": "reference",
+   "run_id": "reference",
+   "batch_id": 4,
+   "executed_at": "1970-01-01T00:00:00Z",
+   "resource_path": "/images/USA-logosmall.gif",
+   "request_count": 1,
+   "total_bytes": 0,
+   "distinct_host_count": 1
+  },
+  {
+   "query_id": "Q2",
+   "pipeline": "reference",
+   "run_id": "reference",
+   "batch_id": 4,
+   "executed_at": "1970-01-01T00:00:00Z",
+   "resource_path": "/shuttle/missions/missions.html",
+   "request_count": 1,
+   "total_bytes": 8677,
+   "distinct_host_count": 1
+  },
+  {
+   "query_id": "Q2",
+   "pipeline": "reference",
+   "run_id": "reference",
+   "batch_id": 4,
+   "executed_at": "1970-01-01T00:00:00Z",
+   "resource_path": "/shuttle/missions/sts-68/news/sts-68-mcc-05.txt",
+   "request_count": 1,
+   "total_bytes": 1839,
+   "distinct_host_count": 1
+  },
+  {
+   "query_id": "Q2",
+   "pipeline": "reference",
+   "run_id": "reference",
+   "batch_id": 4,
+   "executed_at": "1970-01-01T00:00:00Z",
+   "resource_path": "/shuttle/missions/sts-74/sts-74-patch-small.gif",
+   "request_count": 1,
+   "total_bytes": 5494,
+   "distinct_host_count": 1
+  },
+  {
+   "query_id": "Q3",
+   "pipeline": "reference",
+   "run_id": "reference",
+   "batch_id": 4,
+   "executed_at": "1970-01-01T00:00:00Z",
+   "log_date": "1995-07-28",
+   "log_hour": 13,
+   "error_request_count": 0,
+   "total_request_count": 4,
+   "error_rate": 0.0,
+   "distinct_error_hosts": 0
+  },
+  {
+   "query_id": "Q3",
+   "pipeline": "reference",
+   "run_id": "reference",
+   "batch_id": 4,
+   "executed_at": "1970-01-01T00:00:00Z",
+   "log_date": "1995-08-01",
+   "log_hour": 0,
+   "error_request_count": 0,
+   "total_request_count": 5,
+   "error_rate": 0.0,
+   "distinct_error_hosts": 0
+  }
+ ]
+}

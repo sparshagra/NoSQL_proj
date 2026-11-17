@@ -82,7 +82,7 @@ queries:
 
 # ---------------------------------------------------------------- relational DB (B)
 db:
-  engine: postgresql           # or mysql; B decides and tells everyone
+  engine: postgresql           # confirmed by A (17 Nov 2026); the only engine the loader accepts
   host: localhost
   port: 5432
   database: nosql_logs
