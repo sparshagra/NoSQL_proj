@@ -161,7 +161,13 @@ class HadoopBackend:
                 "-D", f"mapreduce.job.name=nosql-{self.run_id}-{job.name}",
                 "-D", f"mapreduce.job.reduces={job.reduces}",
                 "-D", f"mapreduce.input.fileinputformat.split.maxsize={size}",    # identical splits in
-                "-D", f"mapreduce.input.fileinputformat.split.minsize={size}"]    # EVERY job (numbering!)
+                "-D", f"mapreduce.input.fileinputformat.split.minsize={size}",    # EVERY job (numbering!)
+                # Streaming uses the OLD input API: splitSize = max(minsize, min(total/maps, blocksize)).
+                # A large maps hint makes minsize the winner, so the split size is exactly `size`.
+                "-D", "mapreduce.job.maps=100000"]      
+        
+        
+        
         if self.set_delimiter:                       # shared \r rule: a line ends at \n only
             args += ["-D", "textinputformat.record.delimiter=\n"]
         args += ["-files", ",".join(file_list)]
