@@ -106,6 +106,9 @@ mapreduce:
   streaming_jar: /opt/hadoop/share/hadoop/tools/lib/hadoop-streaming-*.jar   # C confirms the path in the image
   num_reducers: 4
   scripts_dir: etl/pipelines/mapreduce  # mapper/reducer scripts
+  python_bin: python3
+  set_record_delimiter: false
+  keep_work_dir: false
 
 # ---------------------------------------------------------------- Pig (D)
 pig:
