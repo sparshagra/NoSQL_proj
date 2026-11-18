@@ -1,9 +1,8 @@
 # Member A (controller, CLI), everyone needs this
 PyYAML>=6.0
 
-# Member B (RDBMS layer): uncomment the driver for the chosen database
-# psycopg2-binary>=2.9
-# mysql-connector-python>=8.0
+# Member B (RDBMS layer): PostgreSQL driver (psycopg 3; [binary] bundles libpq, no compiler needed)
+psycopg[binary]>=3.1
 
 # Phase 1 pipelines, MapReduce (C) and Pig (D): NO Python packages needed.
 # Jobs/scripts run inside the Hadoop container (docker exec); the host only needs the docker CLI.
