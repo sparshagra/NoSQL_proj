@@ -40,9 +40,11 @@ def run(input_files: list[str], batch_size: int, run_id: str) -> dict:
   "total_records":   int,   # every physical line of every input file, malformed included
   "batch_count":     int,   # number of non-empty batches = ceil(total_records / batch_size)
   "rows": [ {...}, ... ],   # result rows for Q1, Q2, Q3, see below
-  "stage_timings":   {...}  # OPTIONAL, e.g. {"copy_sec": 4.0, "parse_sec": 12.3, "query_sec": 4.1}. Ignored by the loader. Useful for the report.
+  "stage_timings":   {...}  # OPTIONAL, {stage: seconds}, in the order the stages ran. STORED and shown in the report, see below.
 }
 ```
+
+**`stage_timings` (per-stage runtimes).** Keys are free-form strings of at most 64 characters (`copy_sec`, `count_sec`, `stage_sec`, `q1_sec`, ...), values are seconds as numbers >= 0; `etl.contract` checks this. If a pipeline reports `q1_sec`, `q2_sec` or `q3_sec`, the report also prints that value next to the query as its **query runtime**. The controller adds two stages itself (`pipeline_run_sec`, `load_results_sec`), so every pipeline has at least a comparable breakdown. Everything lands in the table `run_stage_timings` together with `run_metadata`. The statement's runtime stays `run_metadata.runtime_sec` (whole run); the stage rows break it down. Pipelines that cannot time a query separately (for example one Pig script computing all three) just leave `qN_sec` out.
 
 ### Result row (one dict per output row, all three queries in one flat list)
 
@@ -148,7 +150,8 @@ def load_results(rows: list[dict]) -> int:
 
 def load_run_metadata(meta: dict) -> None:
     """Insert one row into run_metadata. Keys: run_id, pipeline, runtime_sec, batch_size,
-    batch_count, total_records, avg_batch_size, malformed_count."""
+    batch_count, total_records, avg_batch_size, malformed_count, and optionally stage_timings
+    ({stage: seconds}, stored in run_stage_timings in the same transaction)."""
 
 # etl/rdbms/report.py   (B)
 def report(run_id: str | None = None) -> None:
@@ -176,6 +179,7 @@ load_run_metadata({
     "total_records": out["total_records"],
     "avg_batch_size": out["total_records"] / out["batch_count"],
     "malformed_count": out["malformed_count"],
+    "stage_timings": {**out.get("stage_timings", {}), "pipeline_run_sec": ..., "load_results_sec": ...},
 })                                                  # written after the timer, by design
 report(run_id)                                      # NOT part of runtime
 ```

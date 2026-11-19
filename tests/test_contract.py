@@ -59,6 +59,15 @@ class ContractChecks(unittest.TestCase):
             r["log_hour"] = 24
         self._bad(m, "log_hour")
 
+    def test_stage_timings(self):
+        out = good()
+        out["stage_timings"] = {"copy_sec": 1.5, "q1_sec": 0, "query_sec": 2}
+        contract.check_output(out, 1000)
+        for bad in ({"x": -1}, {"x": True}, {"x": "1"}, {"x": float("nan")}, {"x": float("inf")},
+                    {"": 1.0}, {"k" * 65: 1.0}, {1: 1.0}, [("x", 1.0)]):
+            out["stage_timings"] = bad
+            self.assertTrue(contract.find_problems(out, 1000), f"accepted {bad!r}")
+
     def test_totals_invariant(self):
         def m(o):
             r = next(r for r in o["rows"] if r["query_id"] == "Q1")

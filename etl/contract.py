@@ -110,6 +110,17 @@ def find_problems(
             f"{expected_batch_count(total, batch_size)} (total={total}, batch_size={batch_size})"
         )
 
+    timings = out.get("stage_timings")
+    if timings is not None:
+        if not isinstance(timings, dict):
+            probs.append("stage_timings must be a dict {stage: seconds}")
+        else:
+            for k, v in timings.items():
+                if not (isinstance(k, str) and 0 < len(k) <= 64):
+                    probs.append(f"stage_timings key {k!r} must be a non-empty string of at most 64 chars")
+                if not _is_num(v) or v < 0 or v != v or v == float("inf"):
+                    probs.append(f"stage_timings[{k!r}]={v!r} must be a finite number >= 0")
+
     rows = out["rows"]
     if not isinstance(rows, list):
         return probs + ["rows must be a list of dicts"]

@@ -89,6 +89,8 @@ def _cmd_run(cfg, args) -> int:
     print(f"total_records  : {m['total_records']}   malformed: {m['malformed_count']}")
     print(f"batch_size     : {m['batch_size']}   batch_count: {m['batch_count']}   avg: {m['avg_batch_size']:.2f}")
     print(f"result rows    : {len(s.output['rows'])}   contract check: OK")
+    if m.get("stage_timings"):
+        print("stage runtimes : " + ", ".join(f"{k}={v:.3f}" for k, v in m["stage_timings"].items()))
     if s.rdbms is not None:
         print(f"stored in      : {s.rdbms.name}")
         if args.report:

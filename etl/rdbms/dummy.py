@@ -78,6 +78,11 @@ def report(run_id: str | None = None) -> None:
     print(f"avg batch size  : {meta['avg_batch_size']:.2f}")
     print(f"total records   : {meta['total_records']}")
     print(f"malformed lines : {meta['malformed_count']}")
+    timings = meta.get("stage_timings") or {}
+    if timings:
+        print("stage runtimes  : (seconds)")
+        for stage, secs in timings.items():
+            print(f"    {stage:<28}{secs:>10.3f}")
 
     sort_keys = {
         "Q1": lambda r: (r["log_date"], r["status_code"]),

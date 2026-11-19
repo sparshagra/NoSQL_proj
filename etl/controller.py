@@ -94,6 +94,7 @@ def execute_run(
     t0 = time.perf_counter()  # ---- runtime starts: pipeline begins reading input
     try:
         out = module.run(list(input_files), batch_size, run_id)
+        t_run = time.perf_counter()
     except ETLError:
         raise
     except Exception as exc:  # engine/driver crash: report it, load nothing
@@ -102,6 +103,13 @@ def execute_run(
     if rdb is not None:
         rdb.load_results(out["rows"])
     runtime_sec = time.perf_counter() - t0  # ---- runtime stops: results are in the RDBMS
+
+    # Per-stage runtimes: whatever the pipeline reported (copy_sec, q1_sec, ...) plus the two
+    # controller-measured parts, so every pipeline has at least a comparable breakdown.
+    timings = {str(k): float(v) for k, v in (out.get("stage_timings") or {}).items()}
+    timings["pipeline_run_sec"] = round(t_run - t0, 3)
+    if rdb is not None:
+        timings["load_results_sec"] = round(runtime_sec - (t_run - t0), 3)
 
     meta = {
         "run_id": run_id,
@@ -112,6 +120,7 @@ def execute_run(
         "total_records": out["total_records"],
         "avg_batch_size": out["total_records"] / out["batch_count"],
         "malformed_count": out["malformed_count"],
+        "stage_timings": timings,
     }
     if rdb is not None:
         rdb.load_run_metadata(meta)

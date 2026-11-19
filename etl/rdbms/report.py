@@ -58,6 +58,26 @@ def fetch_run(run_id: str | None = None, settings: dict | None = None) -> tuple[
     return meta, rows
 
 
+def fetch_timings(run_id: str, settings: dict | None = None) -> dict[str, float]:
+    """{stage: seconds} of a run, in the order the stages ran. Empty if none were stored, or if the
+    database was created before run_stage_timings existed (run --init-schema to add the table)."""
+    s = settings or loader.db_settings()
+    ph = placeholder(s)
+    try:
+        conn = connect(s)
+        try:
+            cur = conn.cursor()
+            cur.execute(f"SELECT stage, seconds FROM run_stage_timings WHERE run_id = {ph} ORDER BY position",
+                        (run_id,))
+            found = {stage: float(secs) for stage, secs in cur.fetchall()}
+            cur.close()
+            return found
+        finally:
+            conn.close()
+    except Exception:       # old database without the table: the report still works without timings
+        return {}
+
+
 def _normalise(row: dict) -> dict:
     """Make values from any driver look the same (dates as 'YYYY-MM-DD', numbers as int/float)."""
     if row.get("log_date") is not None:
@@ -113,8 +133,13 @@ def _table(cols: tuple[str, ...], rows: list[dict]) -> list[str]:
     return [fmt(headers), "  " + "  ".join("-" * w for w in widths)] + [fmt(r) for r in cells]
 
 
-def render(meta: dict, rows: list[dict], query_names: dict[str, str], target: str = "") -> str:
-    """The whole report as text (separate from printing so it can be tested)."""
+def render(meta: dict, rows: list[dict], query_names: dict[str, str], target: str = "",
+           timings: dict[str, float] | None = None) -> str:
+    """The whole report as text (separate from printing so it can be tested).
+
+    timings: {stage: seconds} from run_stage_timings (optional). A stage named q1_sec / q2_sec / q3_sec
+    is also shown next to its query as that query's runtime."""
+    timings = timings or {}
     out = ["=" * WIDTH, f"RUN REPORT   [{target}]" if target else "RUN REPORT", "=" * WIDTH]
     out += [
         f"run_id            : {meta['run_id']}",
@@ -127,14 +152,19 @@ def render(meta: dict, rows: list[dict], query_names: dict[str, str], target: st
         f"malformed records : {int(meta['malformed_count'])}",
         f"stored at         : {_ts(meta.get('loaded_at'))}",
     ]
+    if timings:
+        out.append("stage runtimes    : (seconds, in the order the stages ran)")
+        out += [f"    {stage:<28}{secs:>10.3f}" for stage, secs in timings.items()]
     for qid in ("Q1", "Q2", "Q3"):
         qrows = sorted((r for r in rows if r["query_id"] == qid), key=SORT_KEYS[qid])
         batch_ids = sorted({r["batch_id"] for r in qrows})
         executed = sorted({_ts(r["executed_at"]) for r in qrows})
         out.append("-" * WIDTH)
         out.append(f"{qid}: {query_names.get(qid, '')}   ({len(qrows)} rows)")
+        own = timings.get(f"{qid.lower()}_sec")
         out.append(f"    batch ID: {', '.join(map(str, batch_ids)) or '-'} of {int(meta['batch_count'])}"
-                   f"   executed at: {executed[-1] if executed else '-'}")
+                   f"   executed at: {executed[-1] if executed else '-'}"
+                   + (f"   query runtime: {own:.3f} s" if own is not None else ""))
         if qrows:
             out += _table(QUERY_COLUMNS[qid], qrows)
         else:
@@ -149,4 +179,4 @@ def report(run_id: str | None = None) -> None:
     settings = loader.db_settings()          # the db: section of config.yaml
     meta, rows = fetch_run(run_id, settings)
     names = {q: spec["name"] for q, spec in load_config()["queries"].items()}
-    print(render(meta, rows, names, describe(settings)))
+    print(render(meta, rows, names, describe(settings), fetch_timings(meta["run_id"], settings)))

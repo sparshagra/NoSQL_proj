@@ -40,6 +40,24 @@ class ControllerEndToEnd(unittest.TestCase):
         self.assertEqual(len(data["query_results"]), len(s.output["rows"]))
         self.assertTrue(all(r["batch_id"] == 3 and r["run_id"] == s.run_id for r in data["query_results"]))
 
+    def test_stage_timings_are_added_stored_and_reported(self):
+        s = execute_run("stub", 1000, [self.log], self.cfg, dummy_db=True)
+        t = s.metadata["stage_timings"]
+        self.assertIn("pipeline_run_sec", t)
+        self.assertIn("load_results_sec", t)
+        self.assertLessEqual(t["pipeline_run_sec"] + t["load_results_sec"], s.runtime_sec + 0.002)
+        with open(self.store) as fh:
+            self.assertEqual(json.load(fh)["run_metadata"][0]["stage_timings"], t)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            s.rdbms.report(s.run_id)
+        self.assertIn("pipeline_run_sec", out.getvalue())
+
+    def test_dry_run_has_no_load_timing(self):
+        s = execute_run("stub", 1000, [self.log], self.cfg, dry_run=True)
+        self.assertIn("pipeline_run_sec", s.metadata["stage_timings"])
+        self.assertNotIn("load_results_sec", s.metadata["stage_timings"])
+
     def test_dry_run_stores_nothing(self):
         execute_run("stub", 1000, [self.log], self.cfg, dry_run=True)
         self.assertFalse(os.path.exists(self.store))

@@ -78,14 +78,16 @@ class SqliteDB(unittest.TestCase):
 
 class Schema(SqliteDB):
     def test_schema_is_idempotent_and_has_all_columns(self):
-        self.assertEqual(loader.init_schema(self.settings), 5)     # 2 tables + 3 indexes; second run: no error, no drop
+        self.assertEqual(loader.init_schema(self.settings), 6)     # 3 tables + 3 indexes; second run: no error, no drop
         conn = loader.connect(self.settings)
         try:
-            cols = {t: [r[1] for r in conn.execute(f"PRAGMA table_info({t})")] for t in ("query_results", "run_metadata")}
+            cols = {t: [r[1] for r in conn.execute(f"PRAGMA table_info({t})")]
+                    for t in ("query_results", "run_metadata", "run_stage_timings")}
         finally:
             conn.close()
         self.assertEqual(tuple(cols["query_results"]), loader.RESULT_COLUMNS)
         self.assertEqual(tuple(cols["run_metadata"]), loader.META_COLUMNS)
+        self.assertEqual(tuple(cols["run_stage_timings"]), loader.STAGE_COLUMNS)
         self.assertIn("total_request_count", cols["query_results"])
 
     def test_schema_has_one_partial_unique_index_per_query(self):
@@ -200,6 +202,42 @@ class Loader(SqliteDB):
         with self.assertRaises(ETLError):
             loader.load_run_metadata({"run_id": "x"})
 
+    def test_stage_timings_are_stored_in_stage_order_with_the_metadata(self):
+        out = stub_pipeline.run([], 1000, "stub_t")
+        timings = {"copy_sec": 1.5, "q1_sec": 0.25, "q2_sec": 0.5, "load_results_sec": 0.125}
+        loader.load_run_metadata({**meta_for(out, "stub_t"), "stage_timings": timings})
+        conn = loader.connect(self.settings)
+        try:
+            got = conn.execute("SELECT stage, seconds FROM run_stage_timings WHERE run_id='stub_t' "
+                               "ORDER BY position").fetchall()
+        finally:
+            conn.close()
+        self.assertEqual(got, list(timings.items()))
+
+    def test_metadata_without_timings_stores_none(self):
+        out = stub_pipeline.run([], 1000, "stub_n")
+        loader.load_run_metadata(meta_for(out, "stub_n"))
+        loader.load_run_metadata({**meta_for(out, "stub_e"), "stage_timings": {}})
+        self.assertEqual(self.count("run_stage_timings"), 0)
+        self.assertEqual(self.count("run_metadata"), 2)
+
+    def test_bad_timings_store_nothing_not_even_the_metadata(self):
+        out = stub_pipeline.run([], 1000, "stub_b")
+        for bad in ({"x_sec": -1}, {"x_sec": True}, {"x_sec": "1"}, {"x_sec": float("nan")},
+                    {"x_sec": float("inf")}, {"": 1.0}, {"s" * 65: 1.0}, [("x_sec", 1.0)]):
+            with self.subTest(bad=bad):
+                with self.assertRaises(ETLError):
+                    loader.load_run_metadata({**meta_for(out, "stub_b"), "stage_timings": bad})
+        self.assertEqual(self.count("run_metadata"), 0)
+        self.assertEqual(self.count("run_stage_timings"), 0)
+
+    def test_duplicate_run_rolls_back_its_timings_too(self):
+        out = stub_pipeline.run([], 1000, "stub_d")
+        loader.load_run_metadata({**meta_for(out, "stub_d"), "stage_timings": {"a_sec": 1.0}})
+        with self.assertRaises(ETLError):
+            loader.load_run_metadata({**meta_for(out, "stub_d"), "stage_timings": {"b_sec": 2.0}})
+        self.assertEqual(self.count("run_stage_timings"), 1)       # only the first run's row
+
     def test_config_db_section_is_validated(self):
         mock.patch.stopall()
         for engine in ("sqlite", "mysql"):                 # sqlite: tests only; mysql: not the team's choice
@@ -242,6 +280,31 @@ class Report(SqliteDB):
         self.assertIn("selected pipeline : pig", latest)
         with self.assertRaises(ETLError):
             self.report_text("missing")
+
+    def test_report_shows_stage_runtimes_and_per_query_runtime(self):
+        out = stub_pipeline.run([], 1000, "x")
+        rows = [{**r, "run_id": "stub_s"} for r in out["rows"]]
+        loader.load_results(rows)
+        loader.load_run_metadata({**meta_for(out, "stub_s"), "stage_timings": {
+            "copy_sec": 1.25, "q1_sec": 0.5, "q2_sec": 0.75, "q3_sec": 1.0, "pipeline_run_sec": 4.0}})
+        text = self.report_text("stub_s")
+        self.assertIn("stage runtimes", text)
+        self.assertLess(text.index("copy_sec"), text.index("q1_sec"))       # order the stages ran in
+        self.assertIn("1.250", text)
+        for qid, secs in (("Q1", "0.500"), ("Q2", "0.750"), ("Q3", "1.000")):
+            line = next(ln for ln in text.splitlines() if ln.startswith("    batch ID") and
+                        text.index(ln) > text.index(f"{qid}: "))
+            self.assertIn(f"query runtime: {secs} s", line)
+
+    def test_report_without_timings_and_on_an_old_database(self):
+        out = stub_pipeline.run([], 1000, "x")
+        self.store(out, "stub_o")
+        self.assertNotIn("stage runtimes", self.report_text("stub_o"))
+        conn = loader.connect(self.settings)               # database created before the table existed
+        conn.execute("DROP TABLE run_stage_timings")
+        conn.commit()
+        conn.close()
+        self.assertIn("run_id            : stub_o", self.report_text("stub_o"))
 
     def test_report_on_empty_database(self):
         with self.assertRaises(ETLError):

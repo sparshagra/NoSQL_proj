@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import subprocess
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from .errors import PipelineError
 
@@ -97,7 +97,7 @@ def put_inputs(
             name=source.name,
         )
         container_source = (
-            Path(hadoop["host_data_mount"]) / source.name
+            PurePosixPath(hadoop["host_data_mount"]) / source.name
         )
 
         # Files outside the mounted data directory need a temporary
@@ -105,7 +105,7 @@ def put_inputs(
         if not str(source).startswith(
             str(Path(hadoop.get("host_data_mount", "/data/plain")).resolve())
         ):
-            container_source = Path("/tmp") / hdfs_name
+            container_source = PurePosixPath("/tmp") / hdfs_name
             docker_cmd = hadoop.get("docker_cmd", "docker")
 
             try:
@@ -114,7 +114,7 @@ def put_inputs(
                         docker_cmd,
                         "cp",
                         str(source),
-                        f'{hadoop["container_name"]}:{container_source}',
+                        f'{hadoop["container_name"]}:{container_source.as_posix()}',
                     ],
                     capture_output=True,
                     text=True,
@@ -135,7 +135,7 @@ def put_inputs(
 
         run_in_container(
             cfg,
-            ["hdfs", "dfs", "-put", "-f", str(container_source), target],
+            ["hdfs", "dfs", "-put", "-f", container_source.as_posix(), target],
         )
 
         uploaded.append(target)

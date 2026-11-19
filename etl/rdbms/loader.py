@@ -20,6 +20,7 @@ is ever stored in the repository.
 from __future__ import annotations
 
 import argparse
+import math
 import os
 import re
 from datetime import date, datetime, timezone
@@ -42,6 +43,8 @@ META_KEYS = (
     "total_records", "avg_batch_size", "malformed_count",
 )
 META_COLUMNS = META_KEYS + ("loaded_at",)
+#: run_stage_timings columns. meta["stage_timings"] ({stage: seconds}, optional) is stored there.
+STAGE_COLUMNS = ("run_id", "stage", "seconds", "position")
 
 _INT_COLUMNS = {"batch_id", "status_code", "request_count", "total_bytes", "distinct_host_count",
                 "log_hour", "error_request_count", "total_request_count", "distinct_error_hosts"}
@@ -165,10 +168,16 @@ def _insert_sql(table: str, columns: tuple[str, ...], settings: dict) -> str:
 
 def _write(sql: str, params: list[tuple], settings: dict) -> None:
     """Run one INSERT for many rows in ONE transaction; commit or roll back."""
+    _write_many([(sql, params)], settings)
+
+
+def _write_many(statements: list[tuple[str, list[tuple]]], settings: dict) -> None:
+    """Run several INSERTs (each for many rows) in ONE transaction; commit or roll back."""
     conn = connect(settings)
     try:
         cur = conn.cursor()
-        cur.executemany(sql, params)
+        for sql, params in statements:
+            cur.executemany(sql, params)
         conn.commit()                             # results are durable before we return
         cur.close()
     except Exception as exc:
@@ -195,11 +204,32 @@ def load_results(rows: list[dict]) -> int:
     return len(params)
 
 
+def _stage_params(run_id: str, timings) -> list[tuple]:
+    """meta["stage_timings"] -> run_stage_timings rows, in the order the stages ran."""
+    if not timings:
+        return []
+    if not isinstance(timings, dict):
+        raise ETLError(f"stage_timings must be a dict {{stage: seconds}}, got {type(timings).__name__}")
+    out = []
+    for pos, (stage, secs) in enumerate(timings.items()):
+        if not isinstance(stage, str) or not 0 < len(stage) <= 64:
+            raise ETLError(f"stage name must be a non-empty string of at most 64 characters: {stage!r}")
+        if isinstance(secs, bool) or not isinstance(secs, (int, float)) or not math.isfinite(secs) or secs < 0:
+            raise ETLError(f"stage_timings[{stage!r}] must be a finite number >= 0, got {secs!r}")
+        out.append((str(run_id), stage, float(secs), pos))
+    return out
+
+
 def load_run_metadata(meta: dict) -> None:
-    """Insert one row into run_metadata. Called after the runtime timer has stopped."""
+    """Insert one row into run_metadata (+ its stage timings). Called after the runtime timer has stopped.
+
+    meta may carry "stage_timings": {stage: seconds}. They go into run_stage_timings in the SAME
+    transaction, so a run is never stored with only part of its metadata.
+    """
     missing = [k for k in META_KEYS if k not in meta]
     if missing:
         raise ETLError(f"run metadata is missing key(s): {missing}")
+    stage_rows = _stage_params(meta["run_id"], meta.get("stage_timings"))
     settings = db_settings()
     loaded_at = datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
     values = (
@@ -207,8 +237,11 @@ def load_run_metadata(meta: dict) -> None:
         int(meta["batch_size"]), int(meta["batch_count"]), int(meta["total_records"]),
         float(meta["avg_batch_size"]), int(meta["malformed_count"]), loaded_at,
     )
-    _write(_insert_sql("run_metadata", META_COLUMNS, settings),
-           [tuple(_adapt(v, settings) for v in values)], settings)
+    statements = [(_insert_sql("run_metadata", META_COLUMNS, settings),
+                   [tuple(_adapt(v, settings) for v in values)])]
+    if stage_rows:
+        statements.append((_insert_sql("run_stage_timings", STAGE_COLUMNS, settings), stage_rows))
+    _write_many(statements, settings)
 
 
 # --------------------------------------------------------------------------- schema setup (outside the runtime)

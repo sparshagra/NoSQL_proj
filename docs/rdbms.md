@@ -20,6 +20,8 @@ Interface: interfaces.md §3. A's controller uses these modules automatically; `
 - `query_results`: one wide table for Q1-Q3 (`query_id` says which); the other queries' columns are NULL. Every row also has `pipeline`, `run_id`, `batch_id` (NOT NULL) and `executed_at`, as the statement requires.
 - `run_metadata`: one row per run (primary key `run_id`) holding `runtime_sec`, `batch_size`, `batch_count`, `total_records`, `avg_batch_size` and `malformed_count`, plus `loaded_at`, which `report()` uses to find the latest run.
 
+- `run_stage_timings`: per-stage runtimes of a run, `(run_id, stage, seconds, position)`, primary key `(run_id, stage)`, foreign key to `run_metadata`. `position` keeps the order the stages ran in. It is written in the **same transaction** as the `run_metadata` row (from `meta["stage_timings"]`), so a run is never stored with half its metadata. Stages come from the pipeline (`copy_sec`, `q1_sec`, `q2_sec`, `q3_sec`, ...) plus two measured by the controller (`pipeline_run_sec`, `load_results_sec`). The report prints them under the run header, and prints `q1_sec`/`q2_sec`/`q3_sec` next to the matching query as its "query runtime". The report still works on a database created before this table existed (it just shows no timings); run `--init-schema` to add the table.
+
 ### Keys and constraints on `query_results`
 Decision D1 (A approved; instructor confirmation pending): every result row has `batch_id = batch_count`.
 

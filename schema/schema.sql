@@ -74,3 +74,17 @@ CREATE TABLE IF NOT EXISTS run_metadata (
     loaded_at            TIMESTAMP        NOT NULL,  -- UTC, set by the loader; used to find the latest run
     PRIMARY KEY (run_id)                             -- one metadata row per run
 );
+
+-- Per-stage runtimes of a run (copy_sec, q1_sec, q2_sec, q3_sec, load_results_sec, ...), as reported
+-- by the pipeline plus the controller. Written in the same transaction as run_metadata. "position" keeps
+-- the order the stages ran in, so the report can show them in that order. The statement's runtime
+-- (run_metadata.runtime_sec) is the whole run, these rows break it down.
+CREATE TABLE IF NOT EXISTS run_stage_timings (
+    run_id               VARCHAR(48)      NOT NULL,
+    stage                VARCHAR(64)      NOT NULL,
+    seconds              DOUBLE PRECISION NOT NULL,
+    position             SMALLINT         NOT NULL,
+    CONSTRAINT ck_stage_seconds CHECK (seconds >= 0),
+    PRIMARY KEY (run_id, stage),
+    FOREIGN KEY (run_id) REFERENCES run_metadata (run_id)
+);
