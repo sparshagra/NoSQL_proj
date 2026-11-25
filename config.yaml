@@ -60,7 +60,7 @@ pipelines:
     owner: A
   hive:
     module: etl.pipelines.hive_pipeline
-    enabled: false             # Phase 2 (B)
+    enabled: true              # Phase 2 (B)
     owner: B
   stub:
     module: etl.pipelines.stub_pipeline
