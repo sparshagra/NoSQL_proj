@@ -92,10 +92,13 @@ def connect(s: dict):
         kwargs["username"] = s["username"]
     if s["password"]:
         kwargs["password"] = s["password"]
+    client = None
     try:
         client = pymongo.MongoClient(s["uri"], **kwargs)
         client.admin.command("ping")
     except (PyMongoError, ValueError) as exc:
+        if client is not None:
+            client.close()                       # no background threads left behind on failure
         raise PipelineError(f"MongoDB is not reachable at {redact(s['uri'])}: {exc}") from exc
     return client
 
