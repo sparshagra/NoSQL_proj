@@ -67,8 +67,10 @@ class ControllerEndToEnd(unittest.TestCase):
         self.assertEqual(s.metadata["batch_size"], self.cfg["batching"]["default_batch_size"])
 
     def test_disabled_and_unknown_pipelines_rejected(self):
+        cfg = {**self.cfg, "pipelines": {**self.cfg["pipelines"],
+                                         "mongo": {**self.cfg["pipelines"]["mongo"], "enabled": False}}}
         with self.assertRaises(PipelineError):
-            execute_run("mongo", 1000, [self.log], self.cfg, dry_run=True)     # disabled in config
+            execute_run("mongo", 1000, [self.log], cfg, dry_run=True)          # disabled in this config
         with self.assertRaises(PipelineError):
             execute_run("nope", 1000, [self.log], self.cfg, dry_run=True)
 

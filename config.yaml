@@ -56,7 +56,7 @@ pipelines:
     owner: D
   mongo:
     module: etl.pipelines.mongo_pipeline
-    enabled: false             # Phase 2 (A). Also A's safety net: built early, see docs/member_A_plan.md
+    enabled: true              # Phase 2. Needs a MongoDB server, see docs/mongo.md
     owner: A
   hive:
     module: etl.pipelines.hive_pipeline
@@ -119,9 +119,15 @@ pig:
 
 # ---------------------------------------------------------------- MongoDB (A, Phase 2)
 mongo:
-  uri: mongodb://localhost:27017
+  uri: mongodb://localhost:27017       # no credentials here; the env var named by uri_env overrides it
+  uri_env: MONGO_URI
+  user_env: MONGO_USER                 # optional: user name / password from these env vars
+  password_env: MONGO_PASSWORD
   database: nosql_logs
-  staging_collection_prefix: stg_
+  staging_collection_prefix: stg_      # per run: stg_<run_id>_raw (lines) and stg_<run_id> (parsed)
+  insert_chunk_size: 10000             # max documents per insert_many (one batch = one or more inserts)
+  server_timeout_ms: 10000
+  keep_staging: false                  # true = keep this run's collections after the run (inspection/demo)
 
 # ---------------------------------------------------------------- Hive (B, Phase 2)
 hive:

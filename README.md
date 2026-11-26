@@ -10,7 +10,7 @@ DAS 839 NoSQL Systems, end-semester project. One tool, four execution choices (M
 
 | Member | Phase 1 | Phase 2 | Read |
 |---|---|---|---|
-| A | architecture, controller/CLI, batching, run ids, timer, config, PR review | MongoDB pipeline (also the Phase 1 safety net) | [docs/member_A_plan.md](docs/member_A_plan.md), [docs/handoff_mongo_phase2.md](docs/handoff_mongo_phase2.md) |
+| A | architecture, controller/CLI, batching, run ids, timer, config, PR review | MongoDB pipeline (also the Phase 1 safety net) | [docs/member_A_plan.md](docs/member_A_plan.md), [docs/handoff_mongo_phase2.md](docs/handoff_mongo_phase2.md), [docs/mongo.md](docs/mongo.md) (implemented) |
 | B | equivalence contract, parsing spec, RDBMS schema, loader, report | Hive pipeline | [docs/handoff_to_B.md](docs/handoff_to_B.md), [docs/handoff_hive_phase2.md](docs/handoff_hive_phase2.md) |
 | C | MapReduce pipeline | support / report | [docs/handoff_to_C.md](docs/handoff_to_C.md) |
 | D | Hadoop environment + Pig pipeline | support / report | [docs/handoff_to_D.md](docs/handoff_to_D.md) |
