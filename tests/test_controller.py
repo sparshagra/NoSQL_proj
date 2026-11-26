@@ -113,8 +113,12 @@ class ControllerEndToEnd(unittest.TestCase):
             self.assertIn(needle, text)
 
     def test_cli_reports_errors_with_exit_code_2(self):
+        # hive is enabled in config.yaml now; disable it here so the error does not depend on
+        # whether a Hadoop container happens to be running.
+        cfg = {**self.cfg, "pipelines": {**self.cfg["pipelines"],
+                                         "hive": {**self.cfg["pipelines"]["hive"], "enabled": False}}}
         err = io.StringIO()
-        with contextlib.redirect_stderr(err):
+        with contextlib.redirect_stderr(err), mock.patch.object(cli, "load_config", return_value=cfg):
             self.assertEqual(cli.main(["run", "--pipeline", "hive", "--dry-run", "--files", self.log]), 2)
         self.assertIn("disabled", err.getvalue())
 
