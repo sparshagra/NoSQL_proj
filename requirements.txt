@@ -8,8 +8,8 @@ psycopg[binary]>=3.1
 # Jobs/scripts run inside the Hadoop container (docker exec); the host only needs the docker CLI.
 # Streaming mappers/reducers use the container's python3.
 
-# Phase 2, MongoDB pipeline (A): uncomment when you start it
-# pymongo>=4.6
+# Phase 2, MongoDB pipeline: driver (needs a MongoDB server, see docs/mongo.md)
+pymongo>=4.6
 
 # Phase 2, Hive pipeline (B): call beeline via docker exec (no package needed), or add a client such as
 # pyhive[hive]>=0.7

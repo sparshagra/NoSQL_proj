@@ -1,5 +1,7 @@
 # MongoDB pipeline (Member A, Phase 2, and the Phase 1 safety net)
 
+> **Status (26 Nov 2026): implemented.** See [mongo.md](mongo.md) for the architecture, setup, commands and tests. One change from the plan below: parsing does **not** happen in Python. The lines are ingested raw, and MongoDB parses them with `$regexFind`, using the contract regexes in an aggregation pipeline. This keeps the whole ETL inside the engine.
+
 **A builds the MongoDB pipeline.** It is a Phase 2 deliverable (all four pipelines are required), and it is also the **safety net for Phase 1**: if the Hadoop environment (MapReduce/Pig) is not working by Wednesday morning, the Phase 1 demo can show MongoDB plus whichever Hadoop pipeline works. So A starts it as soon as the controller and review duties allow (Tue evening / Wed), after B's contract lands.
 
 Read: [interfaces.md](../interfaces.md) §1, §2 and B's `docs/contract.md`.
