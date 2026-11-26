@@ -19,6 +19,15 @@ What the team needs from you:
   Raise `etl.errors.PipelineError` on failures.
 - The `hadoop:` section of `config.yaml` filled in with the real values (container name, paths, `split_size_bytes`).
 
+### Build and start (as implemented in `docker/hadoop/`)
+```bash
+docker build -t nosql-hadoop docker/hadoop                        # rebuild after any change in docker/hadoop/
+docker run -d --name nosql-hadoop -v "$PWD/data/plain:/data/plain:ro" nosql-hadoop
+docker exec nosql-hadoop hdfs dfs -ls -d /tmp                     # drwxrwxrwt: /tmp is 1777
+```
+- On every start, `entrypoint.sh` sets HDFS `/tmp` to **1777**. Hive (`apache/hive:4.0.0`, user `hive`) needs it to create its scratch directory. Without it, HiveServer2 never starts and keeps logging `Permission denied: user=hive`.
+- A container created from an **older image** lacks this. Rebuild the image and recreate the container, or run `docker exec nosql-hadoop hdfs dfs -chmod -R 1777 /tmp` once.
+
 ### Version warning (read before you pick an image)
 Pig 0.17 targets **Hadoop 2.x** and Java 8. Combining it with Hadoop 3.x is a known source of version-compatibility errors. Choose a **Hadoop 2.x image (2.7–2.10) + Pig 0.17.0**, and on day one run a trivial script (`LOAD` a file, `DUMP`) in **`pig -x mapreduce`** to prove the combination works. If it fails, switch image the same day rather than debugging inside it. Also set the container time zone to UTC (Pig date parsing, see below).
 

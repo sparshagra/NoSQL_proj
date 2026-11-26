@@ -40,6 +40,15 @@ if [ "$HDFS_READY" != "true" ]; then
     exit 1
 fi
 
+# HDFS /tmp must be world-writable with the sticky bit (like a Unix /tmp). Hive's HiveServer2 runs as
+# user "hive" in its own container and creates its scratch dir under /tmp/hive. Without this, the first
+# daemon to create /tmp (the JobHistory server) leaves it 770 root:supergroup, and HiveServer2 retries
+# forever with "Permission denied: user=hive". Done before YARN starts, on every start (idempotent).
+echo "Preparing HDFS /tmp (1777)..."
+hdfs dfsadmin -safemode wait
+hdfs dfs -mkdir -p /tmp
+hdfs dfs -chmod -R 1777 /tmp
+
 echo "Starting YARN ResourceManager..."
 yarn-daemon.sh start resourcemanager
 

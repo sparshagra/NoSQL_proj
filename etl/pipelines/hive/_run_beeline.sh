@@ -49,6 +49,36 @@ cd "$DERBY_DIR"
 HS2_PID=$!
 trap 'kill "$HS2_PID" 2>/dev/null || true' EXIT
 
+# Print everything useful about a failed HiveServer2 start, then exit 1. Runs with errexit and pipefail
+# OFF: a missing file or a failing command here must never cut the report short (it used to stop at
+# the `find`, before any log was printed). The most useful parts come first.
+hs2_diagnostics() {
+  set +e +o pipefail
+  echo "$1" >&2
+  echo "========== HIVE ERRORS (hive.log) ==========" >&2
+  grep -n -E "ERROR|Exception|Permission denied" /tmp/hive/hive.log 2>/dev/null | tail -n 40 >&2
+  if grep -q -E "AccessControlException|Permission denied" /tmp/hive/hive.log 2>/dev/null; then
+    echo "HINT: HDFS permissions. HDFS /tmp must be 1777; docker/hadoop/entrypoint.sh sets it on start" >&2
+    echo "      (rebuild the image, or run: docker exec <hadoop container> hdfs dfs -chmod -R 1777 /tmp)." >&2
+  fi
+  echo "========== HIVE SERVER LOG (hs2.log) ==========" >&2
+  cat /tmp/hs2.log >&2
+  echo "========== HIVE APPLICATION LOG (hive.log, last 180 lines) ==========" >&2
+  tail -n 180 /tmp/hive/hive.log >&2
+  echo "========== SCHEMATOOL LOG ==========" >&2
+  tail -n 40 /tmp/schematool.log >&2
+  echo "========== DERBY METASTORE LOG ==========" >&2
+  tail -n 100 /tmp/derby_metastore/derby.log >&2
+  echo "========== PROCESSES ==========" >&2
+  ps -efww >&2
+  echo "========== JAVA PROCESS STATE ==========" >&2
+  cat "/proc/$HS2_PID/status" >&2
+  echo "WAIT CHANNEL: $(cat "/proc/$HS2_PID/wchan" 2>/dev/null)" >&2
+  echo "========== TEMP LOG FILES ==========" >&2
+  find /tmp /opt/hive/logs -maxdepth 3 -type f -printf '%p (%s bytes)\n' 2>/dev/null | head -n 100 >&2
+  exit 1
+}
+
 HS2_READY=0
 for _ in $(seq 1 180); do
   if (echo > /dev/tcp/127.0.0.1/10000) >/dev/null 2>&1; then
@@ -56,32 +86,13 @@ for _ in $(seq 1 180); do
     break
   fi
   if ! kill -0 "$HS2_PID" 2>/dev/null; then
-    echo "HiveServer2 exited early:" >&2
-    tail -n 120 /tmp/hs2.log >&2
-    exit 1
+    hs2_diagnostics "HiveServer2 exited early."
   fi
   sleep 1
 done
 
 if [ "$HS2_READY" -ne 1 ]; then
-  echo "Timed out waiting for HiveServer2 on 127.0.0.1:10000." >&2
-  echo "========== PROCESSES ==========" >&2
-  ps -efww >&2
-  echo "========== TCP SOCKETS ==========" >&2
-  cat /proc/net/tcp /proc/net/tcp6 >&2
-  echo "========== JAVA PROCESS STATE ==========" >&2
-  cat "/proc/$HS2_PID/status" >&2
-  echo "WAIT CHANNEL:" >&2
-  cat "/proc/$HS2_PID/wchan" >&2 || true
-  echo "========== TEMP LOG FILES ==========" >&2
-  find /tmp /opt/hive/logs -maxdepth 3 -type f -printf '%p (%s bytes)\\n' 2>/dev/null | head -100 >&2
-  echo "========== HIVE SERVER LOG ==========" >&2
-  cat /tmp/hs2.log >&2
-  echo "========== HIVE APPLICATION LOG ==========" >&2
-  tail -n 180 /tmp/hive/hive.log >&2
-  echo "========== DERBY METASTORE LOG ==========" >&2
-  tail -n 100 /tmp/derby_metastore/derby.log >&2
-  exit 1
+  hs2_diagnostics "Timed out waiting for HiveServer2 on 127.0.0.1:10000."
 fi
 
 COMBINED="/tmp/combined_${RUN_ID}.hql"
