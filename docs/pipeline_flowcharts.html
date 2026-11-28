@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pipeline flowcharts</title>
+<style>
+  :root{--ink:#222;--paper:#fffef8;--bg:#fff;--muted:#555}
+  body{font-family:"Segoe Print","Comic Sans MS","Bradley Hand",cursive;background:var(--bg);color:var(--ink);margin:0 auto;padding:16px;max-width:1140px}
+  h1{font-size:26px;margin:6px 0} h2{font-size:21px;margin:30px 0 4px;border-bottom:2px dashed #999}
+  p{font-size:14px;line-height:1.5;margin:4px 0} .note{color:var(--muted);font-size:13px}
+  svg{display:block;width:100%;height:auto;border:1px solid #ddd;border-radius:6px;background:var(--paper)}
+  .pg{page-break-before:always}
+  @media print{.noprint{display:none} svg{border:none} @page{size:A4 landscape;margin:10mm}}
+</style></head><body>
+<h1>NASA HTTP log ETL: pipeline flowcharts</h1>
+<p class="note">Checked against the code on 28 Nov 2026 (etl/pipelines/*). One sheet per chart; print landscape. Colours: blue = input, green = host side (Python, outside the engine), yellow = engine staging and parsing, pink = the three queries, grey = rows back to Python, orange = controller and PostgreSQL. Small labels above boxes are the stage timings each engine reports.</p>
+
+<h2>0. Overall flow (same for every engine)</h2><svg id="arch" viewBox="0 0 1100 520"></svg>
+<h2 class="pg">1. MapReduce (Member C): Hadoop Streaming on YARN</h2><svg id="mr" viewBox="0 0 1100 560"></svg>
+<h2 class="pg">2. Pig (Member D): Pig Latin on Hadoop (MapReduce mode)</h2><svg id="pig" viewBox="0 0 1100 560"></svg>
+<h2 class="pg">3. MongoDB (Member A): ingest + aggregation pipelines</h2><svg id="mongo" viewBox="0 0 1100 560"></svg>
+<h2 class="pg">4. Hive (Member B): HiveQL through HiveServer2</h2><svg id="hive" viewBox="0 0 1100 560"></svg>
+
+<script>
+const NS="http://www.w3.org/2000/svg";
+const C={blue:"#cfe3ff",green:"#d4f1d0",yellow:"#fff1b8",pink:"#ffd9e0",orange:"#ffe0bd",purple:"#e6dcff",grey:"#eee"};
+const FONT="Segoe Print,Comic Sans MS,cursive";
+function setup(svg){
+  svg.innerHTML=`<defs><filter id="w-${svg.id}" x="-2%" y="-2%" width="104%" height="104%"><feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="2" seed="3" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="3"/></filter>
+  <marker id="ah-${svg.id}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#333"/></marker></defs><g filter="url(#w-${svg.id})"></g>`;
+  return svg.querySelector("g");
+}
+function el(g,t,a,txt){const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);if(txt!=null)e.textContent=txt;g.appendChild(e);return e;}
+function text(g,x,y,lines,size=13,weight="normal",anchor="middle",fill="#222"){
+  lines.split("\n").forEach((l,i,arr)=>el(g,"text",{x,y:y+(i-(arr.length-1)/2)*(size+3)+size/3,"text-anchor":anchor,"font-size":size,"font-weight":weight,"font-family":FONT,fill},l));
+}
+function box(g,x,y,w,h,label,col,size=12){
+  el(g,"rect",{x,y,width:w,height:h,rx:10,fill:C[col]||col,stroke:"#333","stroke-width":2});
+  const [head,...rest]=label.split("\n");
+  const n=rest.length+1, lh=size+3, top=y+h/2-(n-1)*lh/2;
+  text(g,x+w/2,top,head,size,"bold");
+  rest.forEach((l,i)=>text(g,x+w/2,top+(i+1)*lh,l,size-0.5));
+}
+function arrow(g,x1,y1,x2,y2,dash){el(g,"line",{x1,y1,x2,y2,stroke:"#333","stroke-width":2,"marker-end":`url(#ah-${g.ownerSVGElement.id})`,"stroke-dasharray":dash?"6 4":""});}
+function legend(g){
+  [["input","blue"],["host / Python","green"],["engine: load + parse","yellow"],["engine: queries","pink"],["rows back","grey"],["controller + DB","orange"]]
+   .forEach(([t,c],i)=>{const x=20+i*178;el(g,"rect",{x,y:10,width:22,height:14,rx:4,fill:C[c],stroke:"#333","stroke-width":1.5});text(g,x+30,17,t,11.5,"normal","start");});
+}
+
+// rows: [[step,...],[step,...]]; step = {t, c, h, tag} or {stack:[{t,c,h},...], h, title, tag}
+function wrap(t,max){const out=[];let line="";for(const w of t.split(" ")){if((line+" "+w).trim().length>max){out.push(line);line="  "+w;}else line=(line?line+" ":"")+w;}out.push(line);return out;}
+function flow(id,rows,notes){
+  const svg=document.getElementById(id), g=setup(svg), W=1100, gap=40;
+  legend(g);
+  let cursor=44, prev=null;
+  rows.forEach((row)=>{
+    const n=row.length, bw=Math.min(175,(W-40-(n-1)*gap)/n), span=n*bw+(n-1)*gap, x0=(W-span)/2;
+    const sizes=row.map(s=>{const items=s.stack||[s], bh=s.h||(s.stack?58:84);return {items,bh,tot:items.length*bh+(items.length-1)*10};});
+    const head=row.some(s=>s.title||s.tag)?(row.some(s=>s.title&&s.tag)?46:28):12;
+    const maxTot=Math.max(...sizes.map(z=>z.tot)), top=cursor+head, cy=top+maxTot/2;
+    let last=null, prevStack=null;
+    row.forEach((s,i)=>{
+      const {items,bh,tot}=sizes[i], x=x0+i*(bw+gap), y=cy-tot/2;
+      const centers=items.map((_,j)=>y+j*(bh+10)+bh/2);
+      items.forEach((it,j)=>box(g,x,y+j*(bh+10),bw,bh,it.t,it.c||s.c,s.stack?11:12));
+      if(i>0){
+        const busL=x-gap/2;
+        if(prevStack){ // join: every item of the previous stack -> bus -> this box
+          prevStack.forEach(c=>el(g,"line",{x1:busL-gap/2+2,y1:c,x2:busL,y2:c,stroke:"#333","stroke-width":2}));
+          el(g,"line",{x1:busL,y1:prevStack[0],x2:busL,y2:prevStack[prevStack.length-1],stroke:"#333","stroke-width":2});
+          arrow(g,busL,cy,x-2,cy);
+        } else if(s.stack){ // fork: previous box -> bus -> every item
+          el(g,"line",{x1:x-gap+2,y1:cy,x2:busL,y2:cy,stroke:"#333","stroke-width":2});
+          el(g,"line",{x1:busL,y1:centers[0],x2:busL,y2:centers[centers.length-1],stroke:"#333","stroke-width":2});
+          centers.forEach(c=>arrow(g,busL,c,x-2,c));
+        } else arrow(g,x-gap+2,cy,x-2,cy);
+      }
+      prevStack=s.stack?centers:null;
+      if(s.title) text(g,x+bw/2,y-12,s.title,12,"bold");
+      if(s.tag) text(g,x+bw/2,y-(s.title?30:12),s.tag,11,"normal","middle","#2b55b5");
+      if(i===0&&prev){ // elbow from the end of the previous row to the start of this row (left of any tag)
+        const sx=prev.x+prev.w/2, sy=prev.bottom, ex=x+14, my=prev.rowBottom+(top-head-prev.rowBottom)/2+4;
+        el(g,"path",{d:`M${sx},${sy+2} L${sx},${my} L${ex},${my} L${ex},${y-3}`,stroke:"#333","stroke-width":2,fill:"none","marker-end":`url(#ah-${svg.id})`,"stroke-dasharray":"6 4"});
+      }
+      last={x,w:bw,bottom:y+tot};
+    });
+    prev={...last,rowBottom:top+maxTot};
+    cursor=top+maxTot+44;
+  });
+  let ny=cursor-8;
+  (notes||[]).forEach(t=>wrap("• "+t,148).forEach(l=>{text(g,22,ny,l,12.5,"normal","start");ny+=19;}));
+  svg.setAttribute("viewBox",`0 0 ${W} ${ny+6}`);
+}
+
+/* 0. overall */
+flow("arch",[
+ [{t:"Input files\nJul95 + Aug95\ndecompressed once\n(outside the timer)",c:"blue",h:96},
+  {t:"Web UI or CLI\npick ONE pipeline\n+ batch size",c:"green",h:84},
+  {t:"Controller\nrun_id, config\nSTART TIMER",c:"orange",h:84},
+  {stack:[{t:"MapReduce",c:"yellow"},{t:"Pig",c:"yellow"},{t:"MongoDB",c:"yellow"},{t:"Hive",c:"yellow"}],h:40,title:"run(files, batch_size, run_id)"},
+  {t:"Engine output\nrows + total,\nmalformed,\nbatch_count",c:"grey",h:96}],
+ [{t:"Contract check\ncolumns, types,\nΣQ1 = ΣQ3 =\ntotal − malformed",c:"pink",h:100},
+  {t:"Load results\nquery_results\none transaction\nSTOP TIMER",c:"orange",h:100},
+  {t:"Run metadata\nrun_metadata +\nrun_stage_timings",c:"orange",h:100},
+  {t:"Report\nweb page / CLI\nreads only\nPostgreSQL",c:"purple",h:100},
+  {t:"Compare\ntwo runs\nrow by row\n→ EQUIVALENT",c:"purple",h:100}]
+],["Every engine numbers lines the same way: global line number over Jul then Aug; batch_id = (line_number − 1) // batch_size + 1.",
+   "Malformed = any line that does not match the log regex (blank lines too); counted, never dropped. Real data: 1 malformed line (1,891,715).",
+   "Queries run once over all staged data, so distinct counts are exact; every result row has batch_id = batch_count (decision D1).",
+   "Runtime = engine starts reading input → query_results committed. Includes the HDFS copy / Mongo ingest. Excludes download, install, report."]);
+
+/* 1. MapReduce */
+flow("mr",[
+ [{t:"Raw logs\n2 plain files\nJul95, Aug95",c:"blue"},
+  {t:"Copy to HDFS\n00_NASA…Jul95\n01_NASA…Aug95",c:"green",tag:"copy_sec"},
+  {t:"Count job\nmap-only: lines\nper 64 MB split",c:"yellow",tag:"count_sec"},
+  {t:"Driver (Python)\nprefix sum →\nsplits.tsv: first\nline no. per split",c:"green",h:96},
+  {t:"Stage job\nmap-only, splits.tsv\nin dist. cache: line\nno., batch_id, regex",c:"yellow",h:96,tag:"stage_sec"}],
+ [{t:"Stats job\ntotal + malformed\ncross-checked with\nthe count job",c:"yellow",h:96,tag:"stats_sec"},
+  {stack:[{t:"Q1 job\n(date, status) sums\ncombiner, 4 reducers",c:"pink",h:62},
+          {t:"Q2: two jobs\nq2a per path (4 red.)\n→ q2top: top 20 (1 red.)",c:"pink",h:62},
+          {t:"Q3 job\n(date, hour) errors,\ndistinct error hosts",c:"pink",h:62}],h:62,title:"query jobs",tag:"q1_sec · q2_sec · q3_sec"},
+  {t:"Read part files\nfrom HDFS\n→ result rows",c:"grey"},
+  {t:"Controller\ncontract check,\nload PostgreSQL",c:"orange"}]
+],["Python 3 mapper/reducer scripts run through Hadoop Streaming inside the nosql-hadoop container (Hadoop 2.10.2, YARN).",
+   "Two-pass numbering: a map key is a byte offset, not a line number. Every job uses the same 64 MB split size, so the count job and the stage job see identical splits.",
+   "Malformed lines keep their number and get malformed = 1 in the staged record; the stats job counts them. Default line reader: safe because the files contain no lone \\r.",
+   "Reported stage times: copy, count, stage, stats, q1, q2, q3 (+ pipeline_run, load_results from the controller)."]);
+
+/* 2. Pig */
+flow("pig",[
+ [{t:"Raw logs\n2 plain files",c:"blue"},
+  {t:"Count lines\nper file (Python)\n→ offsets\n0 and 1,891,715",c:"green",h:96},
+  {t:"hdfs put\n00_…Jul95\n01_…Aug95",c:"green"},
+  {t:"LOAD each file\ncustom LFLineLoader:\none split per file,\nLF only, line no.",c:"yellow",h:96},
+  {t:"line_number =\nlocal + offset\nUNION both files",c:"yellow"}],
+ [{t:"REGEX_EXTRACT\nouter regex, then\nrequest regex\n(contract rules)",c:"yellow",h:96},
+  {t:"FILTER valid\nhost, timestamp,\nstatus present",c:"yellow"},
+  {stack:[{t:"Q1\nGROUP (date, status)\nCOUNT_STAR, SUM",c:"pink"},
+          {t:"Q2\nGROUP path, DISTINCT host\nORDER, LIMIT 20",c:"pink"},
+          {t:"Q3\nGROUP (date, hour), nested\nFILTER errors, DISTINCT host",c:"pink"}],h:62,title:"Pig Latin"},
+  {t:"STORE (\\x01)\nPython reads rows;\nmalformed =\ntotal − ΣQ1",c:"grey",h:96},
+  {t:"Controller\ncontract check,\nload PostgreSQL",c:"orange"}]
+],["Pig 0.17 in MapReduce mode on the same Hadoop container. SET pig.splitCombination false, so each file stays one split and keeps its order.",
+   "LFLineLoader (our Java loader) numbers the lines of one file in order and ends a line at \\n only; the Aug95 offset is the Jul95 line count.",
+   "Malformed lines are dropped by the FILTER and counted as total − (number of valid records); the count of 1 matches every other engine.",
+   "Reported stage time: total_seconds only (one Pig script runs all three queries)."]);
+
+/* 3. MongoDB */
+flow("mongo",[
+ [{t:"Raw logs\n2 plain files",c:"blue"},
+  {t:"Connect\nMongoClient + ping\nfail fast if down",c:"green",tag:"connect_sec"},
+  {t:"Ingest (Python)\nnumber lines, LF only\n{_id: line, batch_id,\nline} insert_many",c:"green",h:96,tag:"ingest_sec"},
+  {t:"Parse aggregation\n$regexFind with the\ncontract regexes\n→ $out stg_<run_id>",c:"yellow",h:96,tag:"parse_sec"},
+  {t:"Indexes\nbatch_id;\npartial: malformed",c:"yellow",tag:"index_sec"}],
+ [{t:"Verify batches\n$group by batch_id:\nrecords, malformed\nchecked in Python",c:"yellow",h:96,tag:"verify_sec"},
+  {stack:[{t:"Q1\n$match valid,\n$group (date, status)",c:"pink"},
+          {t:"Q2\n$group (path, host) → path\n$sort, $limit 20",c:"pink"},
+          {t:"Q3\n$group (date, hour, host)\n→ (date, hour)",c:"pink"}],h:62,title:"aggregation pipelines",tag:"q1_sec · q2_sec · q3_sec"},
+  {t:"Drop the run's\n2 staging\ncollections",c:"grey"},
+  {t:"Controller\ncontract check,\nload PostgreSQL",c:"orange"}]
+],["MongoDB 7.0 in the nosql-mongo container; driver pymongo. Every physical line is stored raw, so parsing really happens inside MongoDB.",
+   "One insert_many per batch (split into chunks of at most 10,000 documents), so the batch size decides how the data enters the engine.",
+   "Distinct hosts are exact: group by (key, host) first, then count the groups. Q2 ties break by path (code-point order).",
+   "Reported stage times: connect, ingest, parse, index, verify, q1, q2, q3."]);
+
+/* 4. Hive */
+flow("hive",[
+ [{t:"Raw logs\n2 plain files",c:"blue"},
+  {t:"hdfs put\nhive_stage/<run>/\ninput/00_, 01_",c:"green",tag:"stage_sec"},
+  {t:"Hive container\napache/hive:4.0.0\nHiveServer2 + Derby\n+ beeline",c:"green",h:96,tag:"query_sec (from here)"},
+  {t:"External table\none column:\nraw_line\nover the HDFS dir",c:"yellow",h:96},
+  {t:"CTAS (Parquet)\nROW_NUMBER per file\nby byte offset, then\nby file rank → line no.",c:"yellow",h:96}],
+ [{t:"regexp_extract\nouter + request regex,\nmalformed flag,\ndate/hour/bytes",c:"yellow",h:96},
+  {stack:[{t:"meta\nCOUNT(*), malformed,\nfirst malformed line",c:"pink"},
+          {t:"Q1\nGROUP BY date, status",c:"pink"},
+          {t:"Q2\nGROUP BY path, COUNT\nDISTINCT host, LIMIT 20",c:"pink"},
+          {t:"Q3\nGROUP BY date, hour,\nDISTINCT error hosts",c:"pink"}],h:56,title:"INSERT OVERWRITE DIRECTORY"},
+  {t:"Python reads\n\\x01 files\nfrom HDFS",c:"grey"},
+  {t:"Controller\ncontract check,\nload PostgreSQL",c:"orange"}]
+],["The Hive container shares the nosql-hadoop network: tables and outputs live in that HDFS; queries run on Tez in local mode inside the Hive container.",
+   "Line numbers: ROW_NUMBER() over each file ordered by BLOCK__OFFSET__INSIDE__FILE (byte offset), then over (file rank, local number).",
+   "Each run starts a fresh Hive container (HiveServer2 + metastore); that start-up is inside query_sec, so Hive's runtime includes it.",
+   "Reported stage times: stage, query, total."]);
+
+// ?only=mr shows one chart alone (used to export images for the report)
+const only=new URLSearchParams(location.search).get("only");
+if(only){
+  document.querySelectorAll("h1,h2,p").forEach(e=>e.style.display="none");
+  document.querySelectorAll("svg").forEach(s=>{s.style.display=s.id===only?"block":"none";s.style.border="none";s.style.borderRadius="0";});
+  Object.assign(document.body.style,{padding:"0",margin:"0",maxWidth:"none"});
+}
+</script>
+</body></html>

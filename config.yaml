@@ -115,7 +115,7 @@ pig:
   exec_type: mapreduce                  # mapreduce = real cluster mode. local = FALLBACK ONLY, must be stated in the report
   pig_bin: pig
   scripts_dir: etl/pipelines/pig        # .pig scripts
-  split_combination: false              # SET pig.splitCombination false (keeps input order for RANK numbering)
+  split_combination: false              # SET pig.splitCombination false (one split per file for the numbering loader)
 
 # ---------------------------------------------------------------- MongoDB (A, Phase 2)
 mongo:

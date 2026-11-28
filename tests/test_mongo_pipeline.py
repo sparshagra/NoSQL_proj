@@ -34,6 +34,12 @@ from etl.runid import new_run_id
 HERE = Path(__file__).resolve().parent
 FIX = HERE / "fixtures"
 ENGINE = os.environ.get("ETL_ENGINE_TESTS") == "1"
+try:
+    import pymongo  # noqa: F401
+    HAVE_PYMONGO = True
+except ImportError:
+    HAVE_PYMONGO = False
+NEEDS_PYMONGO = unittest.skipUnless(HAVE_PYMONGO or ENGINE, 'needs the driver: pip install "pymongo>=4.6"')
 
 # (input files, batch size, expected output) - B's reference outputs
 CASES = {
@@ -136,6 +142,7 @@ class BatchCheck(unittest.TestCase):
 
 
 class Rows(unittest.TestCase):
+    @NEEDS_PYMONGO
     def test_types_are_plain_python(self):
         from bson.int64 import Int64
         common = {"pipeline": "mongo", "run_id": "r", "batch_id": 4, "executed_at": "2026-11-26T00:00:00Z"}
@@ -150,6 +157,7 @@ class Rows(unittest.TestCase):
 
 
 class Failures(unittest.TestCase):
+    @NEEDS_PYMONGO
     def test_unreachable_server_raises_pipeline_error(self):
         cfg = load_config()
         cfg["mongo"] = {**cfg["mongo"], "server_timeout_ms": 300}

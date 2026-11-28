@@ -17,6 +17,12 @@ DAS 839 NoSQL Systems, end-semester project. One tool, four execution choices (M
 
 Shared documents: [interfaces.md](interfaces.md) (the contract between us, read it fully), [config.yaml](config.yaml), [docs/architecture.md](docs/architecture.md).
 
+**Phase 2 submission material:**
+- The compact PDF report is `NoSQL_final_report.pdf` (C), with the batch-size sweep.
+- [docs/pipeline_flowcharts.html](docs/pipeline_flowcharts.html) has the overall flow and one flowchart per engine, checked against the code. PNG exports for the report and slides are in [docs/flowcharts/](docs/flowcharts/).
+- [docs/phase2_video_script.md](docs/phase2_video_script.md) is the video running order, the live-demo steps and a checklist.
+- `scripts/bench_summary.py` summarises the full-data benchmark runs and checks each one against the reference parser.
+
 ## Quick start (5 minutes, no database needed)
 
 ```bash
