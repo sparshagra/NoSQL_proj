@@ -29,6 +29,16 @@ python -m etl run --pipeline stub --batch-size 1200 --files data/synthetic/synth
 
 The `stub` pipeline returns fake numbers in the correct shape. Your job is to replace "fake numbers" with a real engine.
 
+## Web interface (pick a pipeline, run it, read the report)
+
+```bash
+python -m etl ui --open        # http://127.0.0.1:8000, standard library only
+```
+
+Select exactly one of MapReduce, Pig, MongoDB or Hive, set the batch size, and run. The report (runtime, batch size,
+batch count, average batch size, malformed count, stage runtimes, Q1/Q2/Q3) is read back from PostgreSQL, and two
+stored runs can be checked for equivalence. Details: [docs/ui.md](docs/ui.md).
+
 ## Real data (once per person, outside the runtime timer)
 
 Everyone must use byte-identical files.
@@ -49,6 +59,7 @@ Anything that defines **what the output looks like** (contract, schema, interfac
 ```
 config.yaml  interfaces.md  README.md
 etl/            controller, cli, batching, contract checker, registry   (A)
+etl/web/        web interface: server.py + static/ (A), see docs/ui.md
 etl/hadoop_util.py   docker exec / HDFS helpers   (D, shared by MapReduce, Pig, Hive)
 etl/pipelines/  mapreduce_pipeline.py (C)   pig_pipeline.py (D)   mongo_pipeline.py (A, Phase 2)
                 hive_pipeline.py (B, Phase 2)   stub_pipeline.py (A)

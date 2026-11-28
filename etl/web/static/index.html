@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NASA Log ETL</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%232a78d6'/%3E%3Crect x='3' y='9' width='2' height='4' fill='white'/%3E%3Crect x='7' y='6' width='2' height='7' fill='white'/%3E%3Crect x='11' y='3' width='2' height='10' fill='white'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap top-inner">
+    <div>
+      <h1>NASA Log ETL</h1>
+      <p class="sub">Multi-pipeline ETL and reporting for the NASA HTTP logs (Jul95 + Aug95)</p>
+    </div>
+    <div id="db-status" class="db-status" role="status"><span class="dot"></span><span class="txt">checking database…</span></div>
+  </div>
+</header>
+
+<main class="wrap">
+  <!-- 1. run -->
+  <section class="card" aria-labelledby="run-h">
+    <h2 id="run-h"><span class="step">1</span>Run a pipeline</h2>
+    <form id="run-form" autocomplete="off">
+      <fieldset class="pipes">
+        <legend>Execution pipeline (choose exactly one)</legend>
+        <div id="pipe-list" class="pipe-list"></div>
+      </fieldset>
+      <div class="row">
+        <label class="field">
+          <span>Batch size (records per batch)</span>
+          <input id="batch-size" type="number" min="1" step="1" required inputmode="numeric">
+        </label>
+        <label class="field grow">
+          <span>Input</span>
+          <select id="input-sel"></select>
+        </label>
+        <button id="run-btn" class="btn primary" type="submit">Run pipeline</button>
+      </div>
+      <p class="note">Runtime is measured from the moment the pipeline starts reading the input files until the
+        results are committed to PostgreSQL. Showing the report on this page is not part of it.
+        Use the same batch size for every pipeline in one experiment.</p>
+    </form>
+    <div id="job" class="job" hidden aria-live="polite"></div>
+  </section>
+
+  <!-- 2. report -->
+  <section class="card" aria-labelledby="rep-h">
+    <div class="card-head">
+      <h2 id="rep-h"><span class="step">2</span>Report</h2>
+      <label class="field inline"><span>Stored run</span><select id="run-sel"></select></label>
+    </div>
+    <div id="report-empty" class="empty">No stored run selected yet. Run a pipeline, or pick a stored run.</div>
+    <div id="report" hidden>
+      <div id="meta" class="tiles"></div>
+      <div class="split">
+        <div>
+          <h3>Stage runtimes <span class="muted">(seconds, in the order they ran)</span></h3>
+          <div id="stages" class="bars"></div>
+        </div>
+        <div>
+          <h3>Batches</h3>
+          <div id="batches"></div>
+        </div>
+      </div>
+      <div class="tabs" role="tablist" id="q-tabs"></div>
+      <div id="q-panel" role="tabpanel"></div>
+    </div>
+  </section>
+
+  <!-- 3. compare -->
+  <section class="card" aria-labelledby="cmp-h">
+    <h2 id="cmp-h"><span class="step">3</span>Compare pipelines</h2>
+    <div class="split">
+      <div>
+        <div class="row tight">
+          <label class="field grow"><span>Experiment (same input and batch size)</span><select id="exp-sel"></select></label>
+        </div>
+        <h3>Runtime, latest run of each pipeline <span class="muted">(seconds)</span></h3>
+        <div id="runtime-chart" class="bars"></div>
+      </div>
+      <div>
+        <h3>Equivalence check</h3>
+        <p class="note">Pick two stored runs. The results are read back from PostgreSQL and compared row by row
+          (pipeline, run ID, batch ID and execution time are ignored).</p>
+        <div class="row tight">
+          <label class="field grow"><span>Run A</span><select id="cmp-a"></select></label>
+          <label class="field grow"><span>Run B</span><select id="cmp-b"></select></label>
+          <button id="cmp-btn" class="btn" type="button">Compare</button>
+        </div>
+        <div id="cmp-out"></div>
+      </div>
+    </div>
+    <h3>Stored runs</h3>
+    <div class="table-wrap short"><table id="runs-table" class="data"></table></div>
+  </section>
+</main>
+<div id="tip" class="tip" hidden></div>
+<script src="/static/app.js"></script>
+</body>
+</html>
