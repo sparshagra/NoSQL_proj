@@ -4,7 +4,8 @@ INSERT OVERWRITE DIRECTORY '${hivevar:out_meta_dir}'
 ROW FORMAT DELIMITED FIELDS TERMINATED BY '\001'
 SELECT
     COUNT(*),
-    SUM(CASE WHEN malformed THEN 1 ELSE 0 END)
+    SUM(CASE WHEN malformed THEN 1 ELSE 0 END),
+    MIN(CASE WHEN malformed THEN line_number END)   -- first malformed line: checks the line numbering
 FROM ${hivevar:parsed_table};
 
 INSERT OVERWRITE DIRECTORY '${hivevar:out_q1_dir}'

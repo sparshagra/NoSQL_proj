@@ -6,12 +6,14 @@
                           [--report] [--dry-run] [--dump-rows out.json] [--dummy-db]
     python -m etl report  [--run-id ID | --latest] [--dummy-db]
     python -m etl compare a.json b.json
+    python -m etl ui      [--host 127.0.0.1] [--port 8000] [--open] [--show-test-pipelines]
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 
 from . import batching
@@ -51,6 +53,13 @@ def build_parser() -> argparse.ArgumentParser:
     c = sub.add_parser("compare", help="equivalence check between two --dump-rows files")
     c.add_argument("a")
     c.add_argument("b")
+
+    u = sub.add_parser("ui", help="web interface: select a pipeline, run it, read the report")
+    u.add_argument("--host", default="127.0.0.1", help="interface to listen on (default: this machine only)")
+    u.add_argument("--port", type=int, default=8000)
+    u.add_argument("--open", action="store_true", help="open the page in the default browser")
+    u.add_argument("--show-test-pipelines", action="store_true",
+                   help="also list non-statement pipelines such as the stub")
     return p
 
 
@@ -122,14 +131,21 @@ def _cmd_compare(cfg, args) -> int:
     return 1
 
 
+def _cmd_ui(cfg, args) -> int:
+    from .web.server import serve
+    return serve(args.host, args.port, open_browser=args.open, show_test_pipelines=args.show_test_pipelines)
+
+
 _COMMANDS = {
     "list-pipelines": _cmd_list, "files": _cmd_files, "run": _cmd_run,
-    "report": _cmd_report, "compare": _cmd_compare,
+    "report": _cmd_report, "compare": _cmd_compare, "ui": _cmd_ui,
 }
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.config:  # the loader/report read ETL_CONFIG themselves; keep every module on one config
+        os.environ["ETL_CONFIG"] = os.path.abspath(args.config)
     try:
         cfg = load_config(args.config)
         return _COMMANDS[args.cmd](cfg, args)

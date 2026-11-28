@@ -2,15 +2,24 @@ USE ${hivevar:db_name};
 
 DROP TABLE IF EXISTS ${hivevar:parsed_table};
 CREATE TABLE ${hivevar:parsed_table} STORED AS PARQUET AS
-WITH ranked AS (
+WITH src AS (
+    -- BLOCK__OFFSET__INSIDE__FILE is the byte offset where each line starts, so ordering by it
+    -- inside one file gives the lines in file order (ORDER BY a constant would give any order).
     SELECT
         raw_line,
-        CAST(regexp_extract(INPUT__FILE__NAME, '/([0-9]{2})_', 1) AS INT) AS file_rank,
-        row_number() OVER (
-            PARTITION BY INPUT__FILE__NAME
-            ORDER BY 1
-        ) AS local_seq
+        INPUT__FILE__NAME AS file_name,
+        BLOCK__OFFSET__INSIDE__FILE AS byte_offset
     FROM ${hivevar:raw_table}
+),
+ranked AS (
+    SELECT
+        raw_line,
+        CAST(regexp_extract(file_name, '/([0-9]{2})_', 1) AS INT) AS file_rank,
+        row_number() OVER (
+            PARTITION BY file_name
+            ORDER BY byte_offset ASC
+        ) AS local_seq
+    FROM src
 ),
 numbered AS (
     SELECT
